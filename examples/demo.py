@@ -11,5 +11,3 @@ e: Annotated[np.ndarray, (2, 3)] = a @ b - b
 wrong_shape: Annotated[np.ndarray, (2, 3)] = a
 wrong_shape2: Annotated[np.ndarray, (2, 3)] = a @ c
 wrong_shape3: Annotated[np.ndarray, (2, 3)] = a - b
-
-

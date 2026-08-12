@@ -129,7 +129,7 @@ class ShapeChecker(ast.NodeVisitor):
 
     def _infer_matmult_shape(
         self,
-        node: ast.AST,
+        node: ast.BinOp,
         left_shape: tuple[int | str, ...],
         right_shape: tuple[int | str, ...],
     ) -> tuple[int | str, ...] | None:
@@ -202,7 +202,7 @@ class ShapeChecker(ast.NodeVisitor):
 
     def _infer_elementwise_shape(
         self,
-        node: ast.AST,
+        node: ast.BinOp,
         left_shape: tuple[int | str, ...],
         right_shape: tuple[int | str, ...],
     ) -> tuple[int | str, ...] | None:

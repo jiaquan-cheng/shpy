@@ -8,9 +8,9 @@ A lightweight static analyzer for validating NumPy array shapes at compile-time.
 
 Without shape checker, we have to rely on comments, which are hard to maintain and can be incorrect:
 ```python
-a = np.array([[1, 2], [3, 4]])      # (2, 3)
-b = np.zeros((4, 4))                # (4, 4)
-c = a @ b                           # (2, 4)
+a = np.array([[1, 2], [3, 4]])  # (2, 3)
+b = np.zeros((4, 4))  # (4, 4)
+c = a @ b  # (2, 4)
 ```
 
 With the shape checker, we can annotate the shape like this:
@@ -18,7 +18,7 @@ With the shape checker, we can annotate the shape like this:
 from typing import Annotated
 
 a: Annotated[np.ndarray, (2, 3)] = np.array([[1, 2], [3, 4]])
-b = np.zeros((4, 4)) # or no annotation
+b = np.zeros((4, 4))  # or no annotation
 c = a @ b
 ```
 Running the checker will catch the mismatch before runtime:
