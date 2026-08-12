@@ -17,7 +17,7 @@ TEST_CASES = [
         """,
         {"a": (2, 2), "b": (2, 3), "c": (4, 2, 4), "d": (2, 3)},
         [],
-        id="explicit_annotations_valid",
+        id="explicit_annotations",
     ),
     pytest.param(
         """
@@ -61,7 +61,106 @@ TEST_CASES = [
         """,
         {"a": (2, 2), "b": (3, 3)},
         [{"line": 4, "code": "ANNOTATION_MISMATCH"}],
-        id="variable_propagation_with_mismatch",
+        id="variable_propagation_mismatch",
+    ),
+    pytest.param(
+        """
+        import numpy as np
+        from typing import Annotated
+        a: Annotated[np.ndarray, (2, 2)] = np.array([[1, 2], [3, 4]])
+        b: Annotated[np.ndarray, (2, 2)] = np.array([[5, 6], [7, 8]])
+        c: Annotated[np.ndarray, (2, 2)] = np.array([[9, 10], [11, 12]])
+        d: Annotated[np.ndarray, (2, 2)] = a + b - c
+        e: Annotated[np.ndarray, (2, 2)] = a / b * c
+        """,
+        {"a": (2, 2), "b": (2, 2), "c": (2, 2), "d": (2, 2), "e": (2, 2)},
+        [],
+        id="binary_operation",
+    ),
+    pytest.param(
+        """
+        import numpy as np
+        from typing import Annotated
+        a: Annotated[np.ndarray, (2, 2)] = np.array([[1, 2], [3, 4]])
+        b: Annotated[np.ndarray, (2, 3)] = np.array([[5, 6, 7], [8, 9, 10]])
+        c: Annotated[np.ndarray, (2, 3)] = a + b
+        """,
+        {"a": (2, 2), "b": (2, 3), "c": (2, 3)},
+        [{"line": 5, "code": "ELEMENTWISE_MISMATCH"}],
+        id="binary_operation_mismatch",
+    ),
+    pytest.param(
+        """
+        import numpy as np
+        from typing import Annotated
+        a: Annotated[np.ndarray, (2, 2)] = np.array([[1, 2], [3, 4]])
+        b: Annotated[np.ndarray, (2, 3)] = np.array([[5, 6, 7], [8, 9, 10]])
+        c: Annotated[np.ndarray, (2, 3)] = a @ b
+        """,
+        {"a": (2, 2), "b": (2, 3), "c": (2, 3)},
+        [],
+        id="matrix_multiplication",
+    ),
+    pytest.param(
+        """
+        import numpy as np
+        from typing import Annotated
+        a: Annotated[np.ndarray, (2, 2)] = np.array([[1, 2], [3, 4]])
+        b: Annotated[np.ndarray, (3, 3)] = np.array([[5, 6, 7], [8, 9, 10], [11, 12, 13]])
+        c: Annotated[np.ndarray, (2, 3)] = a @ b
+        """,
+        {"a": (2, 2), "b": (3, 3), "c": (2, 3)},
+        [{"line": 5, "code": "MATMUL_MISMATCH"}],
+        id="matrix_multiplication_mismatch",
+    ),
+    pytest.param(
+        """
+        import numpy as np
+        from typing import Annotated
+        a: Annotated[np.ndarray, (2, 2)] = np.array([[1, 2], [3, 4]])
+        b: Annotated[np.ndarray, (2, 3)] = np.array([[5, 6, 7], [8, 9, 10]])
+        c: Annotated[np.ndarray, (3, 3)] = np.array([[11, 12, 13], [14, 15, 16], [17, 18, 19]])
+        d: Annotated[np.ndarray, (2, 3)] = a @ b @ c - b
+        """,
+        {"a": (2, 2), "b": (2, 3), "c": (3, 3), "d": (2, 3)},
+        [],
+        id="matrix_multiplication_2",
+    ),
+    pytest.param(
+        """
+        import numpy as np
+        from typing import Annotated
+        a: Annotated[np.ndarray, (2, 2, 2)] = np.array([[[1, 2], [3, 4]], [[5, 6], [7, 8]]])
+        b: Annotated[np.ndarray, (2, 2, 3)] = np.array([[[9, 10, 11], [12, 13, 14]], [[15, 16, 17], [18, 19, 20]]])
+        c: Annotated[np.ndarray, (2, 2, 3)] = a @ b
+        """,
+        {"a": (2, 2, 2), "b": (2, 2, 3), "c": (2, 2, 3)},
+        [],
+        id="matrix_multiplication_multi_dimensions",
+    ),
+    pytest.param(
+        """
+        import numpy as np
+        from typing import Annotated
+        a: Annotated[np.ndarray, (2, 2, 2)] = np.array([[[1, 2], [3, 4]], [[5, 6], [7, 8]]])
+        b: Annotated[np.ndarray, (3, 2, 3)] = np.array([[[9, 10, 11], [12, 13, 14]], [[15, 16, 17], [18, 19, 20]], [[21, 22, 23], [24, 25, 26]]])
+        c: Annotated[np.ndarray, (2, 3)] = a @ b
+        """,
+        {"a": (2, 2, 2), "b": (3, 2, 3), "c": (2, 3)},
+        [{"line": 5, "code": "MATMUL_MISMATCH"}],
+        id="matrix_multiplication_multi_dimensions_mismatch",
+    ),
+    pytest.param(
+        """
+        import numpy as np
+        from typing import Annotated
+        a: Annotated[np.ndarray, (2, 2, 2)] = np.array([[[1, 2], [3, 4]], [[5, 6], [7, 8]]])
+        b: Annotated[np.ndarray, (3, 3)] = np.array([[9, 10, 11], [12, 13, 14], [15, 16, 17]])
+        c: Annotated[np.ndarray, (2, 3)] = a @ b
+        """,
+        {"a": (2, 2, 2), "b": (3, 3), "c": (2, 3)},
+        [{"line": 5, "code": "MATMUL_MISMATCH"}],
+        id="matrix_multiplication_multi_dimensions_mismatch_2",
     ),
 ]
 

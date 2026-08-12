@@ -5,6 +5,8 @@ from enum import Enum
 
 class ShapeError(Enum):
     ANNOTATION_MISMATCH = "ANNOTATION_MISMATCH"
+    ELEMENTWISE_MISMATCH = "ELEMENTWISE_MISMATCH"
+    MATMUL_MISMATCH = "MATMUL_MISMATCH"
 
 
 class ShapeChecker(ast.NodeVisitor):
@@ -19,7 +21,7 @@ class ShapeChecker(ast.NodeVisitor):
             {
                 "line": line_no,
                 "code": err_type,
-                "message": f"[line {line_no}] [{err_type}] {message}",
+                "message": f"[line {line_no}] [{err_type.value}] {message}",
             }
         )
 
@@ -43,7 +45,7 @@ class ShapeChecker(ast.NodeVisitor):
             self._log_error(
                 node,
                 ShapeError.ANNOTATION_MISMATCH,
-                f"{var_name} annotated as {annotated_shape}, but expression has the shape {inferred_shape}",
+                f"{var_name} annotated as {annotated_shape}, but expression has the shape {inferred_shape}. ",
             )
 
     def visit_Assign(self, node: ast.Assign) -> None:
@@ -92,6 +94,9 @@ class ShapeChecker(ast.NodeVisitor):
         if isinstance(node, ast.Call):
             return self._infer_call_shape(node)
 
+        if isinstance(node, ast.BinOp):
+            return self._infer_binop_shape(node)
+
         return None
 
     def _infer_call_shape(self, node: ast.Call) -> tuple[int | str, ...] | None:
@@ -105,6 +110,114 @@ class ShapeChecker(ast.NodeVisitor):
             return self._extract_shape_from_args(node.args)
 
         return None
+
+    def _infer_binop_shape(self, node: ast.BinOp) -> tuple[int | str, ...] | None:
+        """Infers and validates shapes for binary operations (+, -, *, @)."""
+        left_shape = self._infer_shape(node.left)
+        right_shape = self._infer_shape(node.right)
+
+        if left_shape is None or right_shape is None:
+            return None
+
+        if isinstance(node.op, ast.MatMult):
+            return self._infer_matmult_shape(node, left_shape, right_shape)
+
+        if isinstance(node.op, (ast.Add, ast.Sub, ast.Mult, ast.Div)):
+            return self._infer_elementwise_shape(node, left_shape, right_shape)
+
+        return None
+
+    def _infer_matmult_shape(
+        self,
+        node: ast.AST,
+        left_shape: tuple[int | str, ...],
+        right_shape: tuple[int | str, ...],
+    ) -> tuple[int | str, ...] | None:
+        """Handles matrix multiplication shape inference."""
+        # Promote 1D vector to 2D for alignment
+        left_is_1d = len(left_shape) == 1
+        right_is_1d = len(right_shape) == 1
+
+        work_left = (1,) + left_shape if left_is_1d else left_shape
+        work_right = right_shape + (1,) if right_is_1d else right_shape
+
+        batch_left, (m, n1) = work_left[:-2], work_left[-2:]
+        batch_right, (n2, k) = work_right[:-2], work_right[-2:]
+
+        # Validate inner dimensions
+        if n1 != n2:
+            left_name = ast.unparse(node.left)
+            right_name = ast.unparse(node.right)
+            self._log_error(
+                node,
+                ShapeError.MATMUL_MISMATCH,
+                f"Cannot multiply {left_name} {left_shape} and {right_name} {right_shape}: inner dimensions must match ({n1} != {n2}). ",
+            )
+            return None
+
+        # Validate and broadcast batch dimensions
+        broadcast_batch = self._broadcast_shapes(batch_left, batch_right)
+        if broadcast_batch is None:
+            left_name = ast.unparse(node.left)
+            right_name = ast.unparse(node.right)
+            self._log_error(
+                node,
+                ShapeError.MATMUL_MISMATCH,
+                f"Cannot multiply {left_name} {left_shape} and {right_name} {right_shape}: batch dimensions {batch_left} and {batch_right} are incompatible. ",
+            )
+            return None
+
+        result = broadcast_batch + (m, k)
+
+        # Restore dimensions for 1D vectors
+        if left_is_1d:
+            result = result[1:]
+        if right_is_1d:
+            result = result[:-1]
+
+        return result
+
+    def _broadcast_shapes(
+        self, shape1: tuple[int | str, ...], shape2: tuple[int | str, ...]
+    ) -> tuple[int | str, ...] | None:
+        """Broadcasts two shapes following standard NumPy right-to-left rules. None if incompatible."""
+        len1, len2 = len(shape1), len(shape2)
+        max_len = max(len1, len2)
+
+        # Pad shorter shape with 1s
+        p1 = (1,) * (max_len - len1) + shape1
+        p2 = (1,) * (max_len - len2) + shape2
+
+        result = []
+        for d1, d2 in zip(p1, p2):
+            if d1 == d2:
+                result.append(d1)
+            elif d1 == 1:
+                result.append(d2)
+            elif d2 == 1:
+                result.append(d1)
+            else:
+                return None
+        return tuple(result)
+
+    def _infer_elementwise_shape(
+        self,
+        node: ast.AST,
+        left_shape: tuple[int | str, ...],
+        right_shape: tuple[int | str, ...],
+    ) -> tuple[int | str, ...] | None:
+        """Handles element-wise operation shape inference via broadcasting."""
+        broadcasted = self._broadcast_shapes(left_shape, right_shape)
+        if broadcasted is None:
+            left_name = ast.unparse(node.left)
+            right_name = ast.unparse(node.right)
+            self._log_error(
+                node,
+                ShapeError.ELEMENTWISE_MISMATCH,
+                f"Cannot combine {left_name} {left_shape} and {right_name} {right_shape} with element-wise operator. ",
+            )
+            return None
+        return broadcasted
 
     def _extract_shape_from_args(
         self, args: Sequence[ast.AST]
