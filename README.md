@@ -6,24 +6,24 @@ A lightweight static analyzer for validating NumPy array shapes at compile-time.
 
 ## Example
 
-Without shape checker, we have to rely on comments, which are hard to maintain and can be incorrect:
+Without `shpy`, we have to rely on comments, which are hard to maintain and can be incorrect:
 ```python
 a = np.array([[1, 2], [3, 4]])  # (2, 3)
 b = np.zeros((4, 4))  # (4, 4)
 c = a @ b  # (2, 4)
 ```
 
-With the shape checker, we can annotate the shape like this:
+With `shpy`, we can annotate shapes like this:
 ```python
 from typing import Annotated
 
 a: Annotated[np.ndarray, (2, 3)] = np.array([[1, 2], [3, 4]])
-b = np.zeros((4, 4))  # or no annotation
-c = a @ b
+b: Annotated[np.ndarray, (4, 4)] = np.zeros((4, 4))
+c: Annotated[np.ndarray, (2, 4)] = a @ b
 ```
 Running the checker will catch the mismatch before runtime:
 ```bash
-uv run check examples/intro.py
+shpy examples/intro.py
 ````
 ```bash
 examples/intro.py:5:0: error: [AnnotationMismatch] a annotated as (2, 3), but expression has the shape (2, 2). 
@@ -34,25 +34,30 @@ Found 2 error(s) across 1 file(s).
 
 ## Installation
 
-Prerequisites: Python 3.13+ and [uv](https://docs.astral.sh/uv/).
+Prerequisites: Python 3.13+
 
-To install the dependencies, run:
+To install `shpy` directly:
 
 ```bash
-uv sync
+pip install git+https://github.com/jiaquan-cheng/shpy.git
 ```
-
 ## Usage
 
+
 ```bash
-uv run check paths/to/your/file/or/directory.py
+shpy path/to/your/file_or_directory
 ```
 
 ## Development
 
-To install the dependencies for development, run:
+Prerequisites: Python 3.13+, [uv](https://docs.astral.sh/uv/)
+
+To get started locally:
 ```bash
-uv sync --dev
+git clone https://github.com/jiaquan-cheng/shpy.git
+cd shpy
+uv sync
+uv run make
 ```
 
 - `make` : Runs the test suite and quality checks.

@@ -1,7 +1,10 @@
 [project]
 name = "shpy"
 version = "0.1.0"
+description = "A lightweight static shape checker for Numpy arrays."
+readme = "README.md"
 requires-python = ">=3.13"
+license = { text = "MIT" }
 dependencies = []
 
 [build-system]
@@ -20,4 +23,4 @@ dev = [
 ]
 
 [project.scripts]
-check = "shpy.cli:main"
+shpy = "shpy.cli:main"
