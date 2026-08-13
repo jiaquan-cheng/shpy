@@ -4,9 +4,9 @@ from enum import Enum
 
 
 class ShapeError(Enum):
-    ANNOTATION_MISMATCH = "ANNOTATION_MISMATCH"
-    ELEMENTWISE_MISMATCH = "ELEMENTWISE_MISMATCH"
-    MATMUL_MISMATCH = "MATMUL_MISMATCH"
+    ANNOTATION_MISMATCH = "AnnotationMismatch"
+    ELEMENTWISE_MISMATCH = "ElementwiseMismatch"
+    MATMUL_MISMATCH = "MatMulMismatch"
 
 
 class ShapeChecker(ast.NodeVisitor):
@@ -20,8 +20,9 @@ class ShapeChecker(ast.NodeVisitor):
         self.errors.append(
             {
                 "line": line_no,
-                "code": err_type,
-                "message": f"[line {line_no}] [{err_type.value}] {message}",
+                "col": getattr(node, "col_offset", 0),
+                "code": err_type.value,
+                "message": message,
             }
         )
 
@@ -151,7 +152,7 @@ class ShapeChecker(ast.NodeVisitor):
             self._log_error(
                 node,
                 ShapeError.MATMUL_MISMATCH,
-                f"Cannot multiply {left_name} {left_shape} and {right_name} {right_shape}: inner dimensions must match ({n1} != {n2}). ",
+                f"cannot multiply {left_name} {left_shape} and {right_name} {right_shape}: inner dimensions must match ({n1} != {n2}). ",
             )
             return None
 
@@ -163,7 +164,7 @@ class ShapeChecker(ast.NodeVisitor):
             self._log_error(
                 node,
                 ShapeError.MATMUL_MISMATCH,
-                f"Cannot multiply {left_name} {left_shape} and {right_name} {right_shape}: batch dimensions {batch_left} and {batch_right} are incompatible. ",
+                f"cannot multiply {left_name} {left_shape} and {right_name} {right_shape}: batch dimensions {batch_left} and {batch_right} are incompatible. ",
             )
             return None
 
@@ -214,7 +215,7 @@ class ShapeChecker(ast.NodeVisitor):
             self._log_error(
                 node,
                 ShapeError.ELEMENTWISE_MISMATCH,
-                f"Cannot combine {left_name} {left_shape} and {right_name} {right_shape} with element-wise operator. ",
+                f"cannot combine {left_name} {left_shape} and {right_name} {right_shape} with element-wise operator. ",
             )
             return None
         return broadcasted

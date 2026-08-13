@@ -26,8 +26,10 @@ Running the checker will catch the mismatch before runtime:
 uv run check examples/intro.py
 ````
 ```bash
-[line 5] [ANNOTATION_MISMATCH] a annotated as (2, 3), but expression has the shape (2, 2). 
-[line 7] [MATMUL_MISMATCH] Cannot multiply a (2, 3) and b (4, 4): inner dimensions must match (3 != 4). 
+examples/intro.py:5:0: error: [AnnotationMismatch] a annotated as (2, 3), but expression has the shape (2, 2). 
+examples/intro.py:7:4: error: [MatMulMismatch] cannot multiply a (2, 3) and b (4, 4): inner dimensions must match (3 != 4). 
+
+Found 2 error(s) across 1 file(s).
 ```
 
 ## Installation
@@ -43,7 +45,7 @@ uv sync
 ## Usage
 
 ```bash
-uv run check path/to/your/file.py
+uv run check paths/to/your/file/or/directory.py
 ```
 
 ## Development

@@ -3,7 +3,7 @@ from textwrap import dedent
 
 import pytest
 
-from shape_checker.checker import ShapeChecker
+from shape_checker.checker import ShapeChecker, ShapeError
 
 TEST_CASES = [
     pytest.param(
@@ -49,7 +49,7 @@ TEST_CASES = [
         a: Annotated[np.ndarray, (3, 3)] = np.array([[1, 2], [3, 4]])
         """,
         {"a": (3, 3)},
-        [{"line": 3, "code": "ANNOTATION_MISMATCH"}],
+        [{"line": 3, "code": ShapeError.ANNOTATION_MISMATCH.value}],
         id="annotation_mismatch_detected",
     ),
     pytest.param(
@@ -60,7 +60,7 @@ TEST_CASES = [
         b: Annotated[np.ndarray, (3, 3)] = a
         """,
         {"a": (2, 2), "b": (3, 3)},
-        [{"line": 4, "code": "ANNOTATION_MISMATCH"}],
+        [{"line": 4, "code": ShapeError.ANNOTATION_MISMATCH.value}],
         id="variable_propagation_mismatch",
     ),
     pytest.param(
@@ -86,7 +86,7 @@ TEST_CASES = [
         c: Annotated[np.ndarray, (2, 3)] = a + b
         """,
         {"a": (2, 2), "b": (2, 3), "c": (2, 3)},
-        [{"line": 5, "code": "ELEMENTWISE_MISMATCH"}],
+        [{"line": 5, "code": ShapeError.ELEMENTWISE_MISMATCH.value}],
         id="binary_operation_mismatch",
     ),
     pytest.param(
@@ -110,7 +110,7 @@ TEST_CASES = [
         c: Annotated[np.ndarray, (2, 3)] = a @ b
         """,
         {"a": (2, 2), "b": (3, 3), "c": (2, 3)},
-        [{"line": 5, "code": "MATMUL_MISMATCH"}],
+        [{"line": 5, "code": ShapeError.MATMUL_MISMATCH.value}],
         id="matrix_multiplication_mismatch",
     ),
     pytest.param(
@@ -147,7 +147,7 @@ TEST_CASES = [
         c: Annotated[np.ndarray, (2, 3)] = a @ b
         """,
         {"a": (2, 2, 2), "b": (3, 2, 3), "c": (2, 3)},
-        [{"line": 5, "code": "MATMUL_MISMATCH"}],
+        [{"line": 5, "code": ShapeError.MATMUL_MISMATCH.value}],
         id="matrix_multiplication_multi_dimensions_mismatch",
     ),
     pytest.param(
@@ -159,7 +159,7 @@ TEST_CASES = [
         c: Annotated[np.ndarray, (2, 3)] = a @ b
         """,
         {"a": (2, 2, 2), "b": (3, 3), "c": (2, 3)},
-        [{"line": 5, "code": "MATMUL_MISMATCH"}],
+        [{"line": 5, "code": ShapeError.MATMUL_MISMATCH.value}],
         id="matrix_multiplication_multi_dimensions_mismatch_2",
     ),
 ]
@@ -181,4 +181,4 @@ def test_shape_checker(code, expected_symbols, expected_errors):
 
     for actual, expected in zip(checker.errors, expected_errors):
         assert actual["line"] == expected["line"]
-        assert expected["code"] in actual["message"]
+        assert actual["code"] == expected["code"]
