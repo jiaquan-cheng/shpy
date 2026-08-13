@@ -1,6 +1,6 @@
-# Shape Checker
+# shpy
 
-[![CI](https://github.com/jiaquan-cheng/shape-checker/actions/workflows/ci.yaml/badge.svg)](https://github.com/jiaquan-cheng/shape-checker/actions/workflows/ci.yaml)
+[![CI](https://github.com/jiaquan-cheng/shpy/actions/workflows/ci.yaml/badge.svg)](https://github.com/jiaquan-cheng/shpy/actions/workflows/ci.yaml)
 
 A lightweight static analyzer for validating NumPy array shapes at compile-time.
 

@@ -3,7 +3,7 @@ import ast
 import sys
 from pathlib import Path
 
-from shape_checker.checker import ShapeChecker
+from shpy.checker import ShapeChecker
 
 
 def discover_files(paths: list[Path]) -> list[Path]:

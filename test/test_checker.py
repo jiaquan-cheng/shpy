@@ -3,7 +3,7 @@ from textwrap import dedent
 
 import pytest
 
-from shape_checker.checker import ShapeChecker, ShapeError
+from shpy.checker import ShapeChecker, ShapeError
 
 TEST_CASES = [
     pytest.param(

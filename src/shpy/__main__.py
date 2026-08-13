@@ -1,4 +1,4 @@
-from shape_checker.cli import main
+from shpy.cli import main
 
 if __name__ == "__main__":
     main()
