@@ -56,8 +56,7 @@ To get started locally:
 ```bash
 git clone https://github.com/jiaquan-cheng/shpy.git
 cd shpy
-uv sync
-uv run make
+make setup
 ```
 
 - `make` : Runs the test suite and quality checks.

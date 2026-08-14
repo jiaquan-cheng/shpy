@@ -39,7 +39,6 @@ def main():
     files = discover_files(args.paths)
     all_errors = []
     all_symbols: dict[Path, dict[str, tuple[int, ...]]] = {}
-    
 
     for filepath in files:
         try:
@@ -58,30 +57,31 @@ def main():
             code = error["code"]
             msg = error["message"]
             all_errors.append(f"{filepath}:{line}:{col}: error: [{code}] {msg}")
-        
-        if args.show_shapes:
 
+        if args.show_shapes:
             all_symbols[filepath] = checker.symbol_table
-            
+
     if args.show_shapes and all_symbols:
         print("\n-------- Shapes Found --------")
-        
+
         for filepath in sorted(all_symbols.keys(), key=str):
             print(f"\n{filepath}:")
             symbols = all_symbols[filepath]
             symbols_with_no_shape: list = []
-            
+
             if not symbols:
                 print("- (no shapes inferred)")
                 continue
-                
+
             for var_name, shape in sorted(symbols.items()):
                 if shape is not None:
                     print(f"- {var_name}: {shape}")
                 else:
                     symbols_with_no_shape.append(var_name)
-            print(f"\nno shape inferred for:\n{', '.join(symbols_with_no_shape)}") if symbols_with_no_shape else ""
-                
+            print(
+                f"\nno shape inferred for:\n{', '.join(symbols_with_no_shape)}"
+            ) if symbols_with_no_shape else ""
+
         print("\n" + "-" * 30 + "\n")
 
     all_errors.sort()
