@@ -1,9 +1,15 @@
 import argparse
 import ast
+import importlib.metadata
 import sys
 from pathlib import Path
 
 from shpy.checker import ShapeChecker
+
+try:
+    __version__ = importlib.metadata.version("shpy")
+except importlib.metadata.PackageNotFoundError:
+    __version__ = "unknown"
 
 
 def discover_files(paths: list[Path]) -> list[Path]:
@@ -29,6 +35,9 @@ def main():
     parser = argparse.ArgumentParser(description="A local Python shape checker.")
     parser.add_argument(
         "paths", nargs="+", type=Path, help="Files or directories to check"
+    )
+    parser.add_argument(
+        "--version", action="version", version=f"%(prog)s {__version__}"
     )
     parser.add_argument(
         "--show-shapes",
