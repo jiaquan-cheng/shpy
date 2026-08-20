@@ -162,6 +162,18 @@ TEST_CASES = [
         [{"line": 5, "code": ShapeError.MATMUL_MISMATCH.value}],
         id="matrix_multiplication_multi_dimensions_mismatch_2",
     ),
+    pytest.param(
+        """
+        import numpy as np
+        from typing import Annotated
+        a: float = 2
+        b: Annotated[np.ndarray, (2, 3)] = np.array([[1, 2, 3], [4, 5, 6]])
+        c: Annotated[np.ndarray, (2, 3)] = a * b
+        """,
+        {"a": (1,), "b": (2, 3), "c": (2, 3)},
+        [],
+        id="scalar_multiplication",
+    ),
 ]
 
 

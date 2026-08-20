@@ -98,6 +98,11 @@ class ShapeChecker(ast.NodeVisitor):
         if isinstance(node, ast.BinOp):
             return self._infer_binop_shape(node)
 
+        if isinstance(node, ast.Constant) and isinstance(
+            node.value, (int, float, bool)
+        ):
+            return (1,)
+
         return None
 
     def _infer_call_shape(self, node: ast.Call) -> tuple[int | str, ...] | None:
