@@ -11,6 +11,7 @@ f: int = 5
 g: Annotated[np.ndarray, (2, 3)] = f * e
 dim: int = 3
 h: Annotated[np.ndarray, (3, 2)] = np.zeros((dim, 2))
+ht: Annotated[np.ndarray, (3, 3)] = h.T
 
 
 wrong_shape: Annotated[np.ndarray, (2, 3)] = a

@@ -121,6 +121,19 @@ class ShapeChecker(ast.NodeVisitor):
         ):
             return (1,)
 
+        if isinstance(node, ast.Attribute):
+            return self._infer_attribute_shape(node)
+
+        return None
+
+    def _infer_attribute_shape(
+        self, node: ast.Attribute
+    ) -> tuple[int | str, ...] | None:
+        """Handles attribute-based shape changes, such as .T (transpose)."""
+        if node.attr == "T":
+            shape = self._infer_shape(node.value)
+            if shape is not None:
+                return tuple(reversed(shape))
         return None
 
     def _infer_call_shape(self, node: ast.Call) -> tuple[int | str, ...] | None:

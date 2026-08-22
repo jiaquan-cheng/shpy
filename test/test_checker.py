@@ -186,6 +186,18 @@ TEST_CASES = [
         [],
         id="variable_shape_creation",
     ),
+    pytest.param(
+        """
+        import numpy as np
+        from typing import Annotated
+        a: Annotated[np.ndarray, (2, 3)] = np.full((2, 3), 5)
+        at: Annotated[np.ndarray, (3, 2)] = a.T
+        b: Annotated[np.ndarray, (3, 2)] = np.full((2, 3), 5).T
+        """,
+        {"a": (2, 3), "at": (3, 2), "b": (3, 2)},
+        [],
+        id="transpose",
+    ),
 ]
 
 
