@@ -12,6 +12,7 @@ class ShapeError(Enum):
 class ShapeChecker(ast.NodeVisitor):
     def __init__(self) -> None:
         self.symbol_table: dict[str, tuple[int | str, ...] | None] = {}
+        self.value_table: dict[str, int | float] = {}
         self.errors: list[dict[str, int | ShapeError | str]] = []
 
     def _log_error(self, node: ast.AST, err_type: ShapeError, message: str) -> None:
@@ -34,6 +35,13 @@ class ShapeChecker(ast.NodeVisitor):
             return
 
         var_name = node.target.id
+
+        # If assigned a raw scalar constant (e.g., a: float = 2), record its value
+        if isinstance(node.value, ast.Constant) and isinstance(
+            node.value.value, (int, float)
+        ):
+            self.value_table[var_name] = node.value.value
+
         annotated_shape = self._extract_annotation(node.annotation)
         inferred_shape = self._infer_shape(node.value) if node.value else None
 
@@ -52,6 +60,16 @@ class ShapeChecker(ast.NodeVisitor):
     def visit_Assign(self, node: ast.Assign) -> None:
         """Handles implicit variable assignments."""
         self.generic_visit(node)
+
+        if (
+            node.value
+            and isinstance(node.value, ast.Constant)
+            and isinstance(node.value.value, (int, float))
+        ):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    self.value_table[target.id] = node.value.value
+
         inferred_shape = self._infer_shape(node.value) if node.value else None
 
         for target in node.targets:
@@ -232,21 +250,21 @@ class ShapeChecker(ast.NodeVisitor):
         if not args:
             return None
 
-        first_arg = args[0]
-        if isinstance(first_arg, (ast.Tuple, ast.List)):
-            return tuple(
-                elt.value
-                if isinstance(elt, ast.Constant) and isinstance(elt.value, int)
-                else ast.unparse(elt)
-                for elt in first_arg.elts
-            )
+        elements = args[0].elts if isinstance(args[0], (ast.Tuple, ast.List)) else args
+        shape: list[int | str] = []
 
-        return tuple(
-            arg.value
-            if isinstance(arg, ast.Constant) and isinstance(arg.value, int)
-            else ast.unparse(arg)
-            for arg in args
-        )
+        for elt in elements:
+            if isinstance(elt, ast.Constant) and isinstance(elt.value, int):
+                shape.append(elt.value)
+                continue
+
+            if isinstance(elt, ast.Name) and elt.id in self.value_table:
+                shape.append(int(self.value_table[elt.id]))
+                continue
+
+            shape.append(ast.unparse(elt))
+
+        return tuple(shape)
 
     def _traverse_literal_node(self, node: ast.AST) -> tuple[int, ...]:
         """Calculates shape of lists/tuples."""

@@ -9,6 +9,9 @@ d: Annotated[np.ndarray, (2, 2)] = a
 e: Annotated[np.ndarray, (2, 3)] = a @ b - b
 f: int = 5
 g: Annotated[np.ndarray, (2, 3)] = f * e
+dim: int = 3
+h: Annotated[np.ndarray, (3, 2)] = np.zeros((dim, 2))
+
 
 wrong_shape: Annotated[np.ndarray, (2, 3)] = a
 wrong_shape2: Annotated[np.ndarray, (2, 3)] = a @ c

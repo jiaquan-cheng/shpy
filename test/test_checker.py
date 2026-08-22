@@ -174,6 +174,18 @@ TEST_CASES = [
         [],
         id="scalar_multiplication",
     ),
+    pytest.param(
+        """
+        import numpy as np
+        from typing import Annotated
+        a: float = 2
+        b: Annotated[np.ndarray, (2, 3)] = np.full((a, 3), 5)
+        c: Annotated[np.ndarray, (2, 3)] = np.zeros((a, 3))
+        """,
+        {"a": (1,), "b": (2, 3), "c": (2, 3)},
+        [],
+        id="variable_shape_creation",
+    ),
 ]
 
 
