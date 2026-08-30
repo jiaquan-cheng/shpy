@@ -1,0 +1,37 @@
+import ast
+from textwrap import dedent
+
+import pytest
+
+from shpy.checker import ShapeChecker
+from tests.checker_cases.annotation_cases import ANNOTATION_CASES
+from tests.checker_cases.math_cases import MATH_CASES
+from tests.checker_cases.shape_cases import SHAPE_CASES
+
+TEST_CASES = ANNOTATION_CASES + MATH_CASES + SHAPE_CASES
+
+
+@pytest.mark.parametrize("code, expected_symbols, expected_errors", TEST_CASES)
+def test_shape_checker(code, expected_symbols, expected_errors):
+    cleaned_code = dedent(code).strip()
+    tree = ast.parse(cleaned_code)
+    checker = ShapeChecker()
+    checker.visit(tree)
+
+    for var, shape in expected_symbols.items():
+        assert checker.symbol_table.get(var) == shape, (
+            f"\nVariable mismatch for '{var}':\n"
+            f"  Expected shape: {shape}\n"
+            f"  Actual shape:   {checker.symbol_table.get(var)}\n"
+            f"  Full table:     {checker.symbol_table}"
+        )
+
+    assert len(checker.errors) == len(expected_errors), (
+        f"\nError count mismatch:\n"
+        f"  Expected errors: {expected_errors}\n"
+        f"  Actual errors:   {checker.errors}"
+    )
+
+    for actual, expected in zip(checker.errors, expected_errors):
+        assert actual["line"] == expected["line"]
+        assert actual["code"] == expected["code"]
