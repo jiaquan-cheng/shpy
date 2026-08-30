@@ -3,6 +3,7 @@ import ast
 import importlib.metadata
 import sys
 from pathlib import Path
+from typing import Any
 
 from shpy.checker import ShapeChecker
 
@@ -31,7 +32,7 @@ def discover_files(paths: list[Path]) -> list[Path]:
     return files_to_check
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="A local Python shape checker.")
     parser.add_argument(
         "paths", nargs="+", type=Path, help="Files or directories to check"
@@ -47,7 +48,7 @@ def main():
     args = parser.parse_args()
     files = discover_files(args.paths)
     all_errors = []
-    all_symbols: dict[Path, dict[str, tuple[int, ...]]] = {}
+    all_symbols: dict[Path, dict[str, tuple[Any, ...] | None]] = {}
 
     for filepath in files:
         try:
