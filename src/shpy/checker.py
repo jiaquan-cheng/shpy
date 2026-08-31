@@ -52,6 +52,15 @@ class ShapeChecker(ast.NodeVisitor):
             "expand_dims": lambda node: self._infer_expand_dims(node),
             "swapaxes": lambda node: self._infer_swapaxes(node),
             "resize": lambda node: self._infer_resize(node),
+            "rand": lambda node: self._infer_random_shape(node),
+            "randn": lambda node: self._infer_random_shape(node),
+            "random": lambda node: self._infer_random_shape(node),
+            "random_sample": lambda node: self._infer_random_shape(node),
+            "ranf": lambda node: self._infer_random_shape(node),
+            "sample": lambda node: self._infer_random_shape(node),
+            "randint": lambda node: self._infer_randint_shape(node),
+            "uniform": lambda node: self._infer_random_distribution_shape(node),
+            "normal": lambda node: self._infer_random_distribution_shape(node),
         }
 
         self.attr_handlers = {"T": lambda node: self._infer_transpose(node)}
@@ -493,6 +502,58 @@ class ShapeChecker(ast.NodeVisitor):
             )
             return None
         return broadcasted
+
+    def _infer_random_shape(self, node: ast.Call) -> tuple[int | str, ...] | None:
+        """Handles random functions that take dimensions either as separate positional arguments or a tuple/list size."""
+        if len(node.args) == 1:
+            extracted = self._extract_shape_from_list_or_tuple_or_constant(node.args[0])
+            if extracted is not None:
+                return extracted
+
+        shape: list[int | str] = []
+        for arg in node.args:
+            extracted = self._extract_shape_from_list_or_tuple_or_constant(arg)
+            if extracted and len(extracted) == 1:
+                shape.append(extracted[0])
+            else:
+                shape.append(ast.unparse(arg))
+        return tuple(shape) if shape else (1,)
+
+    def _infer_randint_shape(self, node: ast.Call) -> tuple[int | str, ...] | None:
+        """Handles randint and similar functions where shape can be passed via a size keyword or positional argument."""
+        size_node = next(
+            (kw.value for kw in node.keywords if kw.arg == "size"),
+            None,
+        )
+        if size_node is None:
+            # Check if size is passed as a positional argument (usually 3rd arg for randint(low, high, size))
+            if len(node.args) >= 3:
+                size_node = node.args[2]
+            elif (
+                len(node.args) == 1
+                and not isinstance(node.func, ast.Attribute)
+                or len(node.args) == 2
+            ):
+                # If only high or low,high are given without size, it returns a scalar
+                return (1,)
+
+        if size_node is not None:
+            return self._extract_shape_from_list_or_tuple_or_constant(size_node)
+        return (1,)
+
+    def _infer_random_distribution_shape(
+        self, node: ast.Call
+    ) -> tuple[int | str, ...] | None:
+        """Handles continuous distributions like uniform/normal where shape is passed via 'size' keyword."""
+        size_node = next(
+            (kw.value for kw in node.keywords if kw.arg == "size"),
+            None,
+        )
+        if size_node is not None:
+            return self._extract_shape_from_list_or_tuple_or_constant(size_node)
+
+        # Fallback to positional arguments if size isn't specified (e.g., trailing args can represent parameters or size depending on function)
+        return None
 
     # ==========================================
     # 4. Helpers

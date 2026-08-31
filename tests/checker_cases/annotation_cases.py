@@ -89,4 +89,66 @@ ANNOTATION_CASES = [
         ],
         id="variable_shape_creation_mismatch",
     ),
+    pytest.param(
+        """
+        a: Annotated[np.ndarray, (3, 2)] = np.random.rand(3, 2)
+        b: Annotated[np.ndarray, (5,)] = np.random.randn(5)
+        c: Annotated[np.ndarray, (2, 2, 2)] = np.random.random((2, 2, 2))
+        d: Annotated[np.ndarray, (2, 2, 2)] = np.random.random_sample((2, 2, 2))
+        e: Annotated[np.ndarray, (2, 2, 2)] = np.random.ranf((2, 2, 2))
+        f: Annotated[np.ndarray, (2, 2, 2)] = np.random.sample((2, 2, 2))
+        g: Annotated[np.ndarray, (10, 4)] = np.random.randint(0, 10, size=(10, 4))
+        h: Annotated[np.ndarray, (3, 3)] = np.random.uniform(0, 1, size=(3, 3))
+        i: Annotated[np.ndarray, (4, 4)] = np.random.normal(0, 1, size=(4, 4))
+        """,
+        {
+            "a": (3, 2),
+            "b": (5,),
+            "c": (2, 2, 2),
+            "d": (2, 2, 2),
+            "e": (2, 2, 2),
+            "f": (2, 2, 2),
+            "g": (10, 4),
+            "h": (3, 3),
+            "i": (4, 4),
+        },
+        [],
+        id="random_generation_success",
+    ),
+    pytest.param(
+        """
+        a: Annotated[np.ndarray, (3, 3)] = np.random.rand(3, 2)
+        b: Annotated[np.ndarray, (2,)] = np.random.randn(5)
+        c: Annotated[np.ndarray, (4, 4)] = np.random.random((2, 2))
+        d: Annotated[np.ndarray, (4, 4)] = np.random.random_sample((2, 2))
+        e: Annotated[np.ndarray, (4, 4)] = np.random.ranf((2, 2))
+        f: Annotated[np.ndarray, (4, 4)] = np.random.sample((2, 2))
+        g: Annotated[np.ndarray, (5, 5)] = np.random.randint(0, 10, size=(2, 2))
+        h: Annotated[np.ndarray, (5, 5)] = np.random.uniform(0, 1, size=(2, 2))
+        i: Annotated[np.ndarray, (5, 5)] = np.random.normal(0, 1, size=(2, 2))
+        """,
+        {
+            "a": (3, 3),
+            "b": (2,),
+            "c": (4, 4),
+            "d": (4, 4),
+            "e": (4, 4),
+            "f": (4, 4),
+            "g": (5, 5),
+            "h": (5, 5),
+            "i": (5, 5),
+        },
+        [
+            {"line": 1, "code": ShapeError.ANNOTATION_MISMATCH.value},
+            {"line": 2, "code": ShapeError.ANNOTATION_MISMATCH.value},
+            {"line": 3, "code": ShapeError.ANNOTATION_MISMATCH.value},
+            {"line": 4, "code": ShapeError.ANNOTATION_MISMATCH.value},
+            {"line": 5, "code": ShapeError.ANNOTATION_MISMATCH.value},
+            {"line": 6, "code": ShapeError.ANNOTATION_MISMATCH.value},
+            {"line": 7, "code": ShapeError.ANNOTATION_MISMATCH.value},
+            {"line": 8, "code": ShapeError.ANNOTATION_MISMATCH.value},
+            {"line": 9, "code": ShapeError.ANNOTATION_MISMATCH.value},
+        ],
+        id="random_generation_mismatch",
+    ),
 ]
