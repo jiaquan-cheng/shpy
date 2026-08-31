@@ -155,6 +155,9 @@ class ShapeChecker(ast.NodeVisitor):
         if isinstance(node, ast.Attribute):
             return self._infer_attribute_shape(node)
 
+        if isinstance(node, ast.Subscript):
+            return self._infer_subscript(node)
+
         return None
 
     def _infer_call_shape(self, node: ast.Call) -> tuple[int | str, ...] | None:
@@ -616,6 +619,91 @@ class ShapeChecker(ast.NodeVisitor):
         return tuple(
             dimension for index, dimension in enumerate(shape) if index not in axes
         )
+
+    def _infer_subscript(self, node: ast.Subscript) -> tuple[int | str, ...] | None:
+        """Handles array slicing and indexing operations (e.g., a[0], a[1:3, :])."""
+        shape = self._infer_shape(node.value)
+        if shape is None:
+            return None
+
+        slice_node = node.slice
+        # Normalize slice into a tuple of slices/indices
+        if isinstance(slice_node, ast.Tuple):
+            slices = slice_node.elts
+        else:
+            slices = [slice_node]
+
+        result_shape: list[int | str] = []
+        shape_idx = 0
+
+        for s in slices:
+            if isinstance(s, ast.Constant) and s.value is Ellipsis:
+                # Ellipsis matches as many dimensions as needed
+                # For simplicity in fixed rank shapes, count remaining dimensions
+                ellipsis_count = len(shape) - len(slices) + 1
+                for _ in range(max(0, ellipsis_count)):
+                    if shape_idx < len(shape):
+                        result_shape.append(shape[shape_idx])
+                        shape_idx += 1
+                continue
+
+            if shape_idx >= len(shape):
+                break
+
+            current_dim = shape[shape_idx]
+
+            if isinstance(s, ast.Slice):
+                # Slice operation: start:stop:step
+                start = self._eval_index_constant(s.lower) if s.lower is not None else 0
+                stop = (
+                    self._eval_index_constant(s.upper)
+                    if s.upper is not None
+                    else (current_dim if isinstance(current_dim, int) else None)
+                )
+                step = self._eval_index_constant(s.step) if s.step is not None else 1
+
+                if (
+                    isinstance(current_dim, int)
+                    and isinstance(start, int)
+                    and isinstance(stop, int)
+                    and isinstance(step, int)
+                ):
+                    # Handle bounds and steps roughly
+                    start = max(0, min(start, current_dim))
+                    stop = max(0, min(stop, current_dim))
+                    effective_len = math.ceil((stop - start) / step) if step != 0 else 0
+                    result_shape.append(max(0, effective_len))
+                else:
+                    result_shape.append(current_dim)
+                shape_idx += 1
+            elif isinstance(s, ast.Constant) and isinstance(s.value, int):
+                # Integer indexing drops the dimension
+                shape_idx += 1
+            else:
+                # Other indexing expressions (like lists or advanced indexing)
+                shape_idx += 1
+
+        # Append any remaining dimensions if not fully consumed by slices/ellipsis
+        while shape_idx < len(shape):
+            result_shape.append(shape[shape_idx])
+            shape_idx += 1
+
+        return tuple(result_shape)
+
+    def _eval_index_constant(self, node: ast.AST | None) -> int | None:
+        """Helper to evaluate simple constant integer indices or negative sign expressions."""
+        if node is None:
+            return None
+        if isinstance(node, ast.Constant) and isinstance(node.value, int):
+            return node.value
+        if (
+            isinstance(node, ast.UnaryOp)
+            and isinstance(node.op, ast.USub)
+            and isinstance(node.operand, ast.Constant)
+            and isinstance(node.operand.value, int)
+        ):
+            return -node.operand.value
+        return None
 
     # ==========================================
     # 4. Helpers

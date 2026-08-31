@@ -151,4 +151,40 @@ ANNOTATION_CASES = [
         ],
         id="random_generation_mismatch",
     ),
+    pytest.param(
+        """
+        a: Annotated[np.ndarray, (5, 5, 5)] = np.ones((5, 5, 5))
+        step_slice: Annotated[np.ndarray, (3, 5, 3)] = a[0:5:2, :, ::2]
+        scalar_multi: Annotated[np.ndarray, (5,)] = a[1, 2]
+        ellipsis_slice: Annotated[np.ndarray, (5, 5)] = a[..., 0]
+        """,
+        {
+            "a": (5, 5, 5),
+            "step_slice": (3, 5, 3),
+            "scalar_multi": (5,),
+            "ellipsis_slice": (5, 5),
+        },
+        [],
+        id="slicing_edge_cases_success",
+    ),
+    pytest.param(
+        """
+        a: Annotated[np.ndarray, (5, 5, 5)] = np.ones((5, 5, 5))
+        step_slice: Annotated[np.ndarray, (2, 5, 2)] = a[0:5:2, :, ::2]
+        scalar_multi: Annotated[np.ndarray, (5, 5)] = a[1, 2]
+        ellipsis_slice: Annotated[np.ndarray, (5,)] = a[..., 0]
+        """,
+        {
+            "a": (5, 5, 5),
+            "step_slice": (2, 5, 2),
+            "scalar_multi": (5, 5),
+            "ellipsis_slice": (5,),
+        },
+        [
+            {"line": 2, "code": ShapeError.ANNOTATION_MISMATCH.value},
+            {"line": 3, "code": ShapeError.ANNOTATION_MISMATCH.value},
+            {"line": 4, "code": ShapeError.ANNOTATION_MISMATCH.value},
+        ],
+        id="slicing_edge_cases_mismatch",
+    ),
 ]
