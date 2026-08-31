@@ -1,4 +1,5 @@
 import ast
+import math
 from enum import Enum
 from typing import Any
 
@@ -7,6 +8,7 @@ class ShapeError(Enum):
     ANNOTATION_MISMATCH = "AnnotationMismatch"
     ELEMENTWISE_MISMATCH = "ElementwiseMismatch"
     MATMUL_MISMATCH = "MatMulMismatch"
+    RESHAPE_MISMATCH = "ReshapeMismatch"
 
 
 class ShapeChecker(ast.NodeVisitor):
@@ -24,25 +26,32 @@ class ShapeChecker(ast.NodeVisitor):
                 self._traverse_literal_node(node.args[0]) if node.args else None
             ),
             "zeros": lambda node: (
-                self._extract_shape_from_list_or_tuple(node.args[0])
+                self._extract_shape_from_list_or_tuple_or_constant(node.args[0])
                 if node.args
                 else None
             ),
             "ones": lambda node: (
-                self._extract_shape_from_list_or_tuple(node.args[0])
+                self._extract_shape_from_list_or_tuple_or_constant(node.args[0])
                 if node.args
                 else None
             ),
             "empty": lambda node: (
-                self._extract_shape_from_list_or_tuple(node.args[0])
+                self._extract_shape_from_list_or_tuple_or_constant(node.args[0])
                 if node.args
                 else None
             ),
             "full": lambda node: (
-                self._extract_shape_from_list_or_tuple(node.args[0])
+                self._extract_shape_from_list_or_tuple_or_constant(node.args[0])
                 if node.args
                 else None
             ),
+            "reshape": lambda node: self._infer_reshape(node),
+            "flatten": lambda node: self._infer_flatten(node),
+            "ravel": lambda node: self._infer_flatten(node),
+            "squeeze": lambda node: self._infer_squeeze(node),
+            "expand_dims": lambda node: self._infer_expand_dims(node),
+            "swapaxes": lambda node: self._infer_swapaxes(node),
+            "resize": lambda node: self._infer_resize(node),
         }
 
         self.attr_handlers = {"T": lambda node: self._infer_transpose(node)}
@@ -110,8 +119,11 @@ class ShapeChecker(ast.NodeVisitor):
     # 2. Core Inference
     # ==========================================
 
-    def _infer_shape(self, node: ast.AST) -> tuple[int | str, ...] | None:
+    def _infer_shape(self, node: ast.AST | None) -> tuple[int | str, ...] | None:
         """Extracts shape from right-hand side expression."""
+        if node is None:
+            return None
+
         if isinstance(node, ast.Name):
             return self.symbol_table.get(node.id)
 
@@ -165,6 +177,248 @@ class ShapeChecker(ast.NodeVisitor):
     # ==========================================
     # 3. Specialized Handlers
     # ==========================================
+
+    def _infer_reshape(self, node: ast.Call) -> tuple[int | str, ...] | None:
+        """Handles reshape operations."""
+        receiver_node = (
+            node.func.value if isinstance(node.func, ast.Attribute) else None
+        )
+        receiver_shape = (
+            self._infer_shape(receiver_node) if receiver_node is not None else None
+        )
+        has_receiver = 1 if receiver_shape is not None else 0
+
+        # checks if receiver has shape in receiver.reshape(new_shape) else np.reshape(old_shape, new_shape)
+        if not node.args or has_receiver + len(node.args) < 2:
+            self._log_error(
+                node,
+                ShapeError.RESHAPE_MISMATCH,
+                f"could not infer original shape: {ast.unparse(receiver_node) if receiver_node else 'unknown'} shape not found and missing argument ",
+            )
+            return None
+
+        old_shape = (
+            self._infer_shape(node.args[0])
+            if receiver_shape is None
+            else receiver_shape
+        )
+        new_shape_idx = 1 if receiver_shape is None else 0
+
+        new_shape_arg = node.args[new_shape_idx]
+        new_shape = self._extract_shape_from_list_or_tuple_or_constant(new_shape_arg)
+
+        if old_shape is None:
+            return None
+        if new_shape is None:
+            self._log_error(
+                node,
+                ShapeError.RESHAPE_MISMATCH,
+                f"could not infer new shape: {ast.unparse(new_shape_arg)} ",
+            )
+            return None
+
+        # old shape must be positive
+        if any(isinstance(d, str) or d < 0 for d in old_shape):
+            self._log_error(
+                node,
+                ShapeError.RESHAPE_MISMATCH,
+                "All dimensions in the original shape must be positive. ",
+            )
+            return None
+        old_total = math.prod([d for d in old_shape if isinstance(d, int)])
+
+        # smallest dimension in new shape must be -1 or positive
+        if any(isinstance(d, str) or d < -1 for d in new_shape):
+            self._log_error(
+                node,
+                ShapeError.RESHAPE_MISMATCH,
+                "New shape dimensions cannot be -2 or smaller. ",
+            )
+            return None
+
+        # at most one -1 in new shape
+        if new_shape.count(-1) > 1:
+            self._log_error(
+                node,
+                ShapeError.RESHAPE_MISMATCH,
+                "New shape cannot have multiple -1 dimensions. ",
+            )
+            return None
+        new_total = math.prod(d for d in new_shape if d != -1 and isinstance(d, int))
+
+        # if -1 then old_total must be divisible by new_total
+        if (
+            new_shape.count(-1) == 1
+            and isinstance(new_total, int)
+            and new_total > 0
+            and isinstance(old_total, int)
+            and old_total % new_total == 0
+            or old_total == new_total
+        ):
+            inferred_dim = (
+                old_total // new_total
+                if isinstance(old_total, int) and isinstance(new_total, int)
+                else -1
+            )
+            return tuple(inferred_dim if d == -1 else d for d in new_shape)
+
+        self._log_error(
+            node,
+            ShapeError.RESHAPE_MISMATCH,
+            f"Cannot reshape array of size {old_total} into shape {new_shape}. ",
+        )
+        return None
+
+    def _infer_flatten(self, node: ast.Call) -> tuple[int | str, ...] | None:
+        """Handles flatten and ravel operations."""
+        target_node = None
+        if isinstance(node, ast.Call):
+            if node.args:  # np.flatten(array)
+                target_node = node.args[0]
+            elif isinstance(node.func, ast.Attribute):  # receiver.flatten()
+                target_node = node.func.value
+        shape = self._infer_shape(target_node)
+        if shape is not None:
+            return (math.prod(shape),)
+        return None
+
+    def _infer_squeeze(self, node: ast.Call) -> tuple[int | str, ...] | None:
+        """Handles squeeze operations, including an optional axis."""
+        target_node = node.func.value if isinstance(node.func, ast.Attribute) else None
+        shape = self._infer_shape(target_node)
+        if target_node is not None and shape is not None:
+            axis_node = node.args[0] if node.args else None
+        else:
+            target_node = node.args[0] if node.args else None
+            axis_node = node.args[1] if len(node.args) > 1 else None
+
+        if axis_node is None:
+            axis_node = next(
+                (keyword.value for keyword in node.keywords if keyword.arg == "axis"),
+                None,
+            )
+
+        shape = self._infer_shape(target_node)
+        if shape is None:
+            return None
+        if axis_node is None:
+            return tuple(dimension for dimension in shape if dimension != 1)
+
+        axis_shape = self._extract_shape_from_list_or_tuple_or_constant(axis_node)
+        if axis_shape is None:
+            return None
+        axes: list[int] = []
+        for axis in axis_shape:
+            if not isinstance(axis, int) or not -len(shape) <= axis < len(shape):
+                return None
+            normalized_axis = axis % len(shape)
+            if normalized_axis in axes or shape[normalized_axis] != 1:
+                return None
+            axes.append(normalized_axis)
+        return tuple(
+            dimension for index, dimension in enumerate(shape) if index not in axes
+        )
+
+    def _infer_expand_dims(self, node: ast.Call) -> tuple[int | str, ...] | None:
+        """Handles expand_dims operations."""
+
+        target_node = node.func.value if isinstance(node.func, ast.Attribute) else None
+        shape = self._infer_shape(target_node)
+        if target_node is not None and shape is not None:
+            axis_node = node.args[0] if node.args else None
+        else:
+            target_node = node.args[0] if node.args else None
+            axis_node = node.args[1] if len(node.args) > 1 else None
+
+        if axis_node is None:
+            axis_node = next(
+                (keyword.value for keyword in node.keywords if keyword.arg == "axis"),
+                None,
+            )
+
+        shape = self._infer_shape(target_node)
+        axis_shape = (
+            self._extract_shape_from_list_or_tuple_or_constant(axis_node)
+            if axis_node is not None
+            else None
+        )
+        if shape is None or axis_shape is None or len(axis_shape) != 1:
+            return None
+
+        axis = axis_shape[0]
+        if not isinstance(axis, int) or not -len(shape) - 1 <= axis <= len(shape):
+            return None
+        insert_at = axis if axis >= 0 else len(shape) + axis + 1
+        return shape[:insert_at] + (1,) + shape[insert_at:]
+
+    def _infer_swapaxes(self, node: ast.Call) -> tuple[int | str, ...] | None:
+        """Handles swapaxes operations."""
+        target_node = node.func.value if isinstance(node.func, ast.Attribute) else None
+        shape = self._infer_shape(target_node)
+        if target_node is not None and shape is not None:
+            first_axis_node = node.args[0] if node.args else None
+            second_axis_node = node.args[1] if len(node.args) > 1 else None
+        else:
+            target_node = node.args[0] if node.args else None
+            first_axis_node = node.args[1] if len(node.args) > 1 else None
+            second_axis_node = node.args[2] if len(node.args) > 2 else None
+
+        shape = self._infer_shape(target_node)
+        first_axis_shape = (
+            self._extract_shape_from_list_or_tuple_or_constant(first_axis_node)
+            if first_axis_node is not None
+            else None
+        )
+        second_axis_shape = (
+            self._extract_shape_from_list_or_tuple_or_constant(second_axis_node)
+            if second_axis_node is not None
+            else None
+        )
+        if (
+            shape is None
+            or first_axis_shape is None
+            or second_axis_shape is None
+            or len(first_axis_shape) != 1
+            or len(second_axis_shape) != 1
+        ):
+            return None
+
+        first_axis = first_axis_shape[0]
+        second_axis = second_axis_shape[0]
+        dimension_count = len(shape)
+        if not (
+            isinstance(first_axis, int)
+            and isinstance(second_axis, int)
+            and -dimension_count <= first_axis < dimension_count
+            and -dimension_count <= second_axis < dimension_count
+        ):
+            return None
+
+        first_axis %= dimension_count
+        second_axis %= dimension_count
+        swapped_shape = list(shape)
+        swapped_shape[first_axis], swapped_shape[second_axis] = (
+            swapped_shape[second_axis],
+            swapped_shape[first_axis],
+        )
+        return tuple(swapped_shape)
+
+    def _infer_resize(self, node: ast.Call) -> tuple[int | str, ...] | None:
+        """Handles resize operations."""
+        is_method_call = (
+            isinstance(node.func, ast.Attribute)
+            and self._infer_shape(node.func.value) is not None
+        )
+        shape_node = (
+            node.args[0]
+            if is_method_call and node.args
+            else node.args[1]
+            if not is_method_call and len(node.args) > 1
+            else None
+        )
+        if shape_node is None:
+            return None
+        return self._extract_shape_from_list_or_tuple_or_constant(shape_node)
 
     def _infer_transpose(self, node: ast.Attribute) -> tuple[int | str, ...] | None:
         """Handles transpose operations."""
@@ -272,24 +526,39 @@ class ShapeChecker(ast.NodeVisitor):
 
         return None
 
-    def _extract_shape_from_list_or_tuple(
-        self, node: ast.List | ast.Tuple
+    def _extract_shape_from_list_or_tuple_or_constant(
+        self, node: ast.AST
     ) -> tuple[int | str, ...] | None:
-        """Extracts shape from a list or tuple of constants."""
-        if not node.elts:
-            return (0,)
+        """Extracts shape from a list or tuple of constants or an expression."""
+        if isinstance(node, ast.Constant) and isinstance(node.value, int):
+            return (node.value,)
 
-        shape: list[int | str] = []
-        for elt in node.elts:
-            if isinstance(elt, ast.Constant) and isinstance(elt.value, int):
-                shape.append(elt.value)
-            elif isinstance(elt, ast.Name) and elt.id in self.value_table:
-                shape.append(int(self.value_table[elt.id]))
-            else:
-                shape.append(ast.unparse(elt))
-        if len(shape) == 0:
-            return None
-        return tuple(shape)
+        if isinstance(node, (ast.List, ast.Tuple)):
+            if not node.elts:
+                return (0,)
+
+            shape: list[int | str] = []
+            for elt in node.elts:
+                if isinstance(elt, ast.Constant) and isinstance(elt.value, int):
+                    shape.append(elt.value)
+                elif isinstance(elt, ast.Name) and elt.id in self.value_table:
+                    val = self.value_table[elt.id]
+                    if isinstance(val, (int, float)):
+                        shape.append(int(val))
+                elif isinstance(elt, ast.UnaryOp) and isinstance(elt.op, ast.USub):
+                    if isinstance(elt.operand, ast.Constant) and isinstance(
+                        elt.operand.value, (int, float)
+                    ):
+                        shape.append(-int(elt.operand.value))
+                elif isinstance(elt, ast.Name):
+                    shape.append(elt.id)
+                else:
+                    shape.append(ast.unparse(elt))
+            if len(shape) == 0:
+                return None
+            return tuple(shape)
+
+        return None
 
     def _traverse_literal_node(self, node: ast.AST) -> tuple[int, ...]:
         """Calculates shape of lists/tuples recursively."""

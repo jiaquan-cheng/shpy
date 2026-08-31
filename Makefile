@@ -8,7 +8,7 @@ setup:
 
 lint:
 	uv run ruff check . --fix
-	uv run mypy .
+	uv run mypy -p shpy
 
 format:
 	uv run ruff format .

@@ -30,8 +30,19 @@ def test_shape_checker(code, expected_symbols, expected_errors):
         f"\nError count mismatch:\n"
         f"  Expected errors: {expected_errors}\n"
         f"  Actual errors:   {checker.errors}"
+        f"  Full table:      {checker.symbol_table}"
     )
 
     for actual, expected in zip(checker.errors, expected_errors):
-        assert actual["line"] == expected["line"]
-        assert actual["code"] == expected["code"]
+        assert actual["line"] == expected["line"], (
+            f"\nError line mismatch:\n"
+            f"  Expected line: {expected['line']}\n"
+            f"  Actual line:   {actual['line']}\n"
+            f"  Full table:    {checker.symbol_table}"
+        )
+        assert actual["code"] == expected["code"], (
+            f"\nError code mismatch:\n"
+            f"  Expected code: {expected['code']}\n"
+            f"  Actual code:   {actual['code']}\n"
+            f"  Full table:    {checker.symbol_table}"
+        )
