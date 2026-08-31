@@ -61,6 +61,11 @@ class ShapeChecker(ast.NodeVisitor):
             "randint": lambda node: self._infer_randint_shape(node),
             "uniform": lambda node: self._infer_random_distribution_shape(node),
             "normal": lambda node: self._infer_random_distribution_shape(node),
+            "sum": lambda node: self._infer_reduction(node),
+            "mean": lambda node: self._infer_reduction(node),
+            "prod": lambda node: self._infer_reduction(node),
+            "min": lambda node: self._infer_reduction(node),
+            "max": lambda node: self._infer_reduction(node),
         }
 
         self.attr_handlers = {"T": lambda node: self._infer_transpose(node)}
@@ -555,6 +560,63 @@ class ShapeChecker(ast.NodeVisitor):
         # Fallback to positional arguments if size isn't specified (e.g., trailing args can represent parameters or size depending on function)
         return None
 
+    def _infer_reduction(self, node: ast.Call) -> tuple[int | str, ...] | None:
+        """Handles reduction operations like sum, mean, prod, min, max."""
+        target_node = (
+            node.func.value
+            if isinstance(node.func, ast.Attribute)
+            and self._infer_shape(node.func.value) is not None
+            else None
+        )
+
+        if target_node is not None:
+            axis_node = node.args[0] if node.args else None
+        else:
+            target_node = node.args[0] if node.args else None
+            axis_node = node.args[1] if len(node.args) > 1 else None
+
+        if axis_node is None:
+            axis_node = next(
+                (keyword.value for keyword in node.keywords if keyword.arg == "axis"),
+                None,
+            )
+
+        shape = self._infer_shape(target_node)
+        if shape is None:
+            return None
+
+        if axis_node is None:
+            return (1,)
+
+        axis_shape = self._extract_shape_from_list_or_tuple_or_constant(axis_node)
+        if axis_shape is None:
+            return None
+
+        axes: list[int] = []
+        for axis in axis_shape:
+            if not isinstance(axis, int) or not -len(shape) <= axis < len(shape):
+                return None
+            normalized_axis = axis + len(shape) if axis < 0 else axis
+            if normalized_axis in axes:
+                return None
+            axes.append(normalized_axis)
+
+        keepdims = next(
+            (keyword.value for keyword in node.keywords if keyword.arg == "keepdims"),
+            None,
+        )
+        is_keepdims = isinstance(keepdims, ast.Constant) and keepdims.value is True
+
+        if is_keepdims:
+            return tuple(
+                1 if index in axes else dimension
+                for index, dimension in enumerate(shape)
+            )
+
+        return tuple(
+            dimension for index, dimension in enumerate(shape) if index not in axes
+        )
+
     # ==========================================
     # 4. Helpers
     # ==========================================
@@ -593,6 +655,14 @@ class ShapeChecker(ast.NodeVisitor):
         """Extracts shape from a list or tuple of constants or an expression."""
         if isinstance(node, ast.Constant) and isinstance(node.value, int):
             return (node.value,)
+
+        if (
+            isinstance(node, ast.UnaryOp)
+            and isinstance(node.op, ast.USub)
+            and isinstance(node.operand, ast.Constant)
+            and isinstance(node.operand.value, (int, float))
+        ):
+            return (-int(node.operand.value),)
 
         if isinstance(node, (ast.List, ast.Tuple)):
             if not node.elts:

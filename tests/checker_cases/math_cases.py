@@ -112,4 +112,55 @@ MATH_CASES = [
         [],
         id="scalar_multiplication",
     ),
+    pytest.param(
+        """
+        a = np.ones((2, 3, 4))
+        b: Annotated[np.ndarray, (3, 4)] = np.sum(a, axis=0)
+        c: Annotated[np.ndarray, (2, 4)] = np.mean(a, axis=1)
+        d: Annotated[np.ndarray, (2, 3)] = np.prod(a, axis=-1)
+        e: Annotated[np.ndarray, (3, 4)] = a.sum(axis=0)
+        f: Annotated[np.ndarray, (2, 4)] = a.mean(axis=1)
+        g: Annotated[np.ndarray, (1,)] = np.sum(a)
+        """,
+        {
+            "a": (2, 3, 4),
+            "b": (3, 4),
+            "c": (2, 4),
+            "d": (2, 3),
+            "e": (3, 4),
+            "f": (2, 4),
+            "g": (1,),
+        },
+        [],
+        id="reduction_operations_success",
+    ),
+    pytest.param(
+        """
+        a = np.ones((2, 3, 4))
+        b: Annotated[np.ndarray, (2, 4)] = np.sum(a, axis=0)
+        c: Annotated[np.ndarray, (3, 4)] = np.mean(a, axis=1)
+        d: Annotated[np.ndarray, (2, 4)] = np.prod(a, axis=-1)
+        e: Annotated[np.ndarray, (2, 4)] = a.sum(axis=0)
+        f: Annotated[np.ndarray, (3, 4)] = a.mean(axis=1)
+        g: Annotated[np.ndarray, (2,)] = np.sum(a)
+        """,
+        {
+            "a": (2, 3, 4),
+            "b": (2, 4),
+            "c": (3, 4),
+            "d": (2, 4),
+            "e": (2, 4),
+            "f": (3, 4),
+            "g": (2,),
+        },
+        [
+            {"line": 2, "code": ShapeError.ANNOTATION_MISMATCH.value},
+            {"line": 3, "code": ShapeError.ANNOTATION_MISMATCH.value},
+            {"line": 4, "code": ShapeError.ANNOTATION_MISMATCH.value},
+            {"line": 5, "code": ShapeError.ANNOTATION_MISMATCH.value},
+            {"line": 6, "code": ShapeError.ANNOTATION_MISMATCH.value},
+            {"line": 7, "code": ShapeError.ANNOTATION_MISMATCH.value},
+        ],
+        id="reduction_operations_mismatch",
+    ),
 ]
