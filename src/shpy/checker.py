@@ -66,6 +66,11 @@ class ShapeChecker(ast.NodeVisitor):
             "prod": lambda node: self._infer_reduction(node),
             "min": lambda node: self._infer_reduction(node),
             "max": lambda node: self._infer_reduction(node),
+            "arange": lambda node: self._infer_arange(node),
+            "linspace": lambda node: self._infer_linspace(node),
+            "logspace": lambda node: self._infer_linspace(node),
+            "geomspace": lambda node: self._infer_linspace(node),
+            "meshgrid": lambda node: self._infer_meshgrid(node),
         }
 
         self.attr_handlers = {"T": lambda node: self._infer_transpose(node)}
@@ -704,6 +709,90 @@ class ShapeChecker(ast.NodeVisitor):
         ):
             return -node.operand.value
         return None
+
+    def _infer_arange(self, node: ast.Call) -> tuple[int | str, ...] | None:
+        """Handles np.arange(start, stop, step) or similar variations."""
+        if len(node.args) < 2 and not any(
+            kw.arg in ("start", "stop") for kw in node.keywords
+        ):
+            return None
+
+        # If positional args are given as scalars: arange(start, stop, step)
+        if len(node.args) >= 3:
+            start_val = self._eval_index_constant(node.args[0])
+            stop_val = self._eval_index_constant(node.args[1])
+            step_val = self._eval_index_constant(node.args[2])
+            if (
+                isinstance(start_val, (int, float))
+                and isinstance(stop_val, (int, float))
+                and isinstance(step_val, (int, float))
+                and step_val != 0
+            ):
+                length = math.ceil((stop_val - start_val) / step_val)
+                return (max(0, int(length)),)
+        elif len(node.args) == 2:
+            start_val = self._eval_index_constant(node.args[0])
+            stop_val = self._eval_index_constant(node.args[1])
+            if isinstance(start_val, (int, float)) and isinstance(
+                stop_val, (int, float)
+            ):
+                length = math.ceil(stop_val - start_val)
+                return (max(0, int(length)),)
+        elif len(node.args) == 1:
+            stop_val = self._eval_index_constant(node.args[0])
+            if isinstance(stop_val, (int, float)):
+                return (max(0, int(stop_val)),)
+
+        return None
+
+    def _infer_linspace(self, node: ast.Call) -> tuple[int | str, ...] | None:
+        """Handles np.linspace, np.logspace, np.geomspace where 'num' dictates size."""
+        # Check for keyword 'num'
+        for kw in node.keywords:
+            if kw.arg == "num":
+                val = self._extract_shape_from_list_or_tuple_or_constant(kw.value)
+                if val and isinstance(val[0], int):
+                    return val
+
+        # Fallback positionally: linspace(start, stop, num=50) -> num is usually 3rd arg
+        if len(node.args) >= 3:
+            val = self._extract_shape_from_list_or_tuple_or_constant(node.args[2])
+            if val and isinstance(val[0], int):
+                return val
+
+        # Default num for linspace/logspace/geomspace is 50 if omitted
+        return (50,)
+
+    def _infer_meshgrid(self, node: ast.Call) -> tuple[int | str, ...] | None:
+        """Handles np.meshgrid(*xi, indexing='xy'/'ij')."""
+        input_shapes = []
+        for arg in node.args:
+            shape = self._infer_shape(arg)
+            if shape and len(shape) == 1:
+                input_shapes.append(shape[0])
+            else:
+                return None
+
+        if not input_shapes:
+            return None
+
+        # Check indexing style (default is 'xy' which swaps the first two dimensions)
+        indexing = "xy"
+        for kw in node.keywords:
+            if (
+                kw.arg == "indexing"
+                and isinstance(kw.value, ast.Constant)
+                and isinstance(kw.value.value, str)
+            ):
+                indexing = kw.value.value
+
+        if indexing == "xy" and len(input_shapes) >= 2:
+            input_shapes[0], input_shapes[1] = input_shapes[1], input_shapes[0]
+
+        # Meshgrid returns a list/tuple of arrays, but in typical static annotation checks,
+        # assigning it or returning it matches a tuple of those dimensions or the first broadcasted shape.
+        # Returning the multi-dimensional shape of each output array:
+        return tuple(input_shapes)
 
     # ==========================================
     # 4. Helpers

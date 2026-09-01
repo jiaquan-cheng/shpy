@@ -187,4 +187,54 @@ ANNOTATION_CASES = [
         ],
         id="slicing_edge_cases_mismatch",
     ),
+    pytest.param(
+        """
+        seq: Annotated[np.ndarray, (10,)] = np.arange(0, 10, 1)
+        space: Annotated[np.ndarray, (5,)] = np.linspace(0, 1, 5)
+        log_space: Annotated[np.ndarray, (50,)] = np.logspace(0, 2, 50)
+        geom_space: Annotated[np.ndarray, (10,)] = np.geomspace(1, 1000, 10)
+        x = np.array([1, 2, 3])
+        y = np.array([4, 5])
+        grid: Annotated[np.ndarray, (2, 3)] = np.meshgrid(x, y) # Default indexing='xy' -> (len(y), len(x))
+        """,
+        {
+            "seq": (10,),
+            "space": (5,),
+            "log_space": (50,),
+            "geom_space": (10,),
+            "x": (3,),
+            "y": (2,),
+            "grid": (2, 3),
+        },
+        [],
+        id="sequence_and_grid_functions_success",
+    ),
+    pytest.param(
+        """
+        seq: Annotated[np.ndarray, (5,)] = np.arange(0, 10, 1)
+        space: Annotated[np.ndarray, (10,)] = np.linspace(0, 1, 5)
+        log_space: Annotated[np.ndarray, (10,)] = np.logspace(0, 2, 50)
+        geom_space: Annotated[np.ndarray, (50,)] = np.geomspace(1, 1000, 10)
+        x = np.array([1, 2, 3])
+        y = np.array([4, 5])
+        grid: Annotated[np.ndarray, (3, 2)] = np.meshgrid(x, y)
+        """,
+        {
+            "seq": (5,),
+            "space": (10,),
+            "log_space": (10,),
+            "geom_space": (50,),
+            "x": (3,),
+            "y": (2,),
+            "grid": (3, 2),
+        },
+        [
+            {"line": 1, "code": ShapeError.ANNOTATION_MISMATCH.value},
+            {"line": 2, "code": ShapeError.ANNOTATION_MISMATCH.value},
+            {"line": 3, "code": ShapeError.ANNOTATION_MISMATCH.value},
+            {"line": 4, "code": ShapeError.ANNOTATION_MISMATCH.value},
+            {"line": 7, "code": ShapeError.ANNOTATION_MISMATCH.value},
+        ],
+        id="sequence_and_grid_functions_mismatch",
+    ),
 ]
