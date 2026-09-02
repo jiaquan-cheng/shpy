@@ -1,6 +1,6 @@
 import pytest
 
-from shpy.checker import ShapeError
+from shpy.checker import ErrorCode
 
 ANNOTATION_CASES = [
     pytest.param(
@@ -47,11 +47,11 @@ ANNOTATION_CASES = [
         """,
         {"a": (2, 2), "b": (1, 1, 1, 1), "c": (4, 2, 4), "d": (6, 3), "e": (2, 3)},
         [
-            {"line": 1, "code": ShapeError.ANNOTATION_MISMATCH.value},
-            {"line": 2, "code": ShapeError.ANNOTATION_MISMATCH.value},
-            {"line": 3, "code": ShapeError.ANNOTATION_MISMATCH.value},
-            {"line": 4, "code": ShapeError.ANNOTATION_MISMATCH.value},
-            {"line": 5, "code": ShapeError.ANNOTATION_MISMATCH.value},
+            {"line": 1, "code": ErrorCode.ANNOTATION.value},
+            {"line": 2, "code": ErrorCode.ANNOTATION.value},
+            {"line": 3, "code": ErrorCode.ANNOTATION.value},
+            {"line": 4, "code": ErrorCode.ANNOTATION.value},
+            {"line": 5, "code": ErrorCode.ANNOTATION.value},
         ],
         id="annotation_mismatch_detected",
     ),
@@ -61,7 +61,7 @@ ANNOTATION_CASES = [
         b: Annotated[np.ndarray, (3, 3)] = a
         """,
         {"a": (2, 2), "b": (3, 3)},
-        [{"line": 2, "code": ShapeError.ANNOTATION_MISMATCH.value}],
+        [{"line": 2, "code": ErrorCode.ANNOTATION.value}],
         id="variable_propagation_mismatch",
     ),
     pytest.param(
@@ -84,8 +84,8 @@ ANNOTATION_CASES = [
             """,
         {"a": (1,), "b": (1,), "c": (2, 1), "d": (1,)},
         [
-            {"line": 3, "code": ShapeError.ANNOTATION_MISMATCH.value},
-            {"line": 4, "code": ShapeError.ANNOTATION_MISMATCH.value},
+            {"line": 3, "code": ErrorCode.ANNOTATION.value},
+            {"line": 4, "code": ErrorCode.ANNOTATION.value},
         ],
         id="variable_shape_creation_mismatch",
     ),
@@ -139,15 +139,15 @@ ANNOTATION_CASES = [
             "i": (5, 5),
         },
         [
-            {"line": 1, "code": ShapeError.ANNOTATION_MISMATCH.value},
-            {"line": 2, "code": ShapeError.ANNOTATION_MISMATCH.value},
-            {"line": 3, "code": ShapeError.ANNOTATION_MISMATCH.value},
-            {"line": 4, "code": ShapeError.ANNOTATION_MISMATCH.value},
-            {"line": 5, "code": ShapeError.ANNOTATION_MISMATCH.value},
-            {"line": 6, "code": ShapeError.ANNOTATION_MISMATCH.value},
-            {"line": 7, "code": ShapeError.ANNOTATION_MISMATCH.value},
-            {"line": 8, "code": ShapeError.ANNOTATION_MISMATCH.value},
-            {"line": 9, "code": ShapeError.ANNOTATION_MISMATCH.value},
+            {"line": 1, "code": ErrorCode.ANNOTATION.value},
+            {"line": 2, "code": ErrorCode.ANNOTATION.value},
+            {"line": 3, "code": ErrorCode.ANNOTATION.value},
+            {"line": 4, "code": ErrorCode.ANNOTATION.value},
+            {"line": 5, "code": ErrorCode.ANNOTATION.value},
+            {"line": 6, "code": ErrorCode.ANNOTATION.value},
+            {"line": 7, "code": ErrorCode.ANNOTATION.value},
+            {"line": 8, "code": ErrorCode.ANNOTATION.value},
+            {"line": 9, "code": ErrorCode.ANNOTATION.value},
         ],
         id="random_generation_mismatch",
     ),
@@ -181,9 +181,9 @@ ANNOTATION_CASES = [
             "ellipsis_slice": (5,),
         },
         [
-            {"line": 2, "code": ShapeError.ANNOTATION_MISMATCH.value},
-            {"line": 3, "code": ShapeError.ANNOTATION_MISMATCH.value},
-            {"line": 4, "code": ShapeError.ANNOTATION_MISMATCH.value},
+            {"line": 2, "code": ErrorCode.ANNOTATION.value},
+            {"line": 3, "code": ErrorCode.ANNOTATION.value},
+            {"line": 4, "code": ErrorCode.ANNOTATION.value},
         ],
         id="slicing_edge_cases_mismatch",
     ),
@@ -229,11 +229,11 @@ ANNOTATION_CASES = [
             "grid": (3, 2),
         },
         [
-            {"line": 1, "code": ShapeError.ANNOTATION_MISMATCH.value},
-            {"line": 2, "code": ShapeError.ANNOTATION_MISMATCH.value},
-            {"line": 3, "code": ShapeError.ANNOTATION_MISMATCH.value},
-            {"line": 4, "code": ShapeError.ANNOTATION_MISMATCH.value},
-            {"line": 7, "code": ShapeError.ANNOTATION_MISMATCH.value},
+            {"line": 1, "code": ErrorCode.ANNOTATION.value},
+            {"line": 2, "code": ErrorCode.ANNOTATION.value},
+            {"line": 3, "code": ErrorCode.ANNOTATION.value},
+            {"line": 4, "code": ErrorCode.ANNOTATION.value},
+            {"line": 7, "code": ErrorCode.ANNOTATION.value},
         ],
         id="sequence_and_grid_functions_mismatch",
     ),

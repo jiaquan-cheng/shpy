@@ -1,3 +1,3 @@
-from .checker import ShapeChecker, ShapeError
+from .checker import Checker, ErrorCode
 
-__all__ = ["ShapeChecker", "ShapeError"]
+__all__ = ["Checker", "ErrorCode"]

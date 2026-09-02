@@ -4,19 +4,19 @@ from enum import Enum
 from typing import Any
 
 
-class ShapeError(Enum):
-    ANNOTATION_MISMATCH = "AnnotationMismatch"
-    ELEMENTWISE_MISMATCH = "ElementwiseMismatch"
-    MATMUL_MISMATCH = "MatMulMismatch"
-    RESHAPE_MISMATCH = "ReshapeMismatch"
+class ErrorCode(Enum):
+    ANNOTATION = "Annotation"
+    ELEMENTWISE = "Elementwise"
+    MATMUL = "MatMul"
+    RESHAPE = "Reshape"
 
 
-class ShapeChecker(ast.NodeVisitor):
+class Checker(ast.NodeVisitor):
     def __init__(self) -> None:
-        self.symbol_table: dict[
+        self.shapes: dict[
             str, tuple[Any, ...] | None
         ] = {}  # tracks variable shapes, None if unknown
-        self.value_table: dict[
+        self.scalar_values: dict[
             str, int | float
         ] = {}  # tracks variable values of scalars, in case they are used in shape definitions
         self.errors: list[dict[str, Any]] = []
@@ -89,7 +89,6 @@ class ShapeChecker(ast.NodeVisitor):
 
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
         """Handles explicit annotated variable assignments."""
-        self.generic_visit(node)
 
         if not isinstance(node.target, ast.Name):
             return
@@ -99,25 +98,22 @@ class ShapeChecker(ast.NodeVisitor):
         if isinstance(node.value, ast.Constant) and isinstance(
             node.value.value, (int, float)
         ):
-            self.value_table[var_name] = node.value.value
+            self.scalar_values[var_name] = node.value.value
 
         annotated_shape = self._extract_annotation(node.annotation)
         inferred_shape = self._infer_shape(node.value) if node.value else None
 
-        self.symbol_table[var_name] = (
-            annotated_shape if annotated_shape else inferred_shape
-        )
+        self.shapes[var_name] = annotated_shape if annotated_shape else inferred_shape
 
         if annotated_shape and inferred_shape and annotated_shape != inferred_shape:
             self._log_error(
                 node,
-                ShapeError.ANNOTATION_MISMATCH,
+                ErrorCode.ANNOTATION,
                 f"{var_name} annotated as {annotated_shape}, but expression has the shape {inferred_shape}. ",
             )
 
     def visit_Assign(self, node: ast.Assign) -> None:
         """Handles implicit variable assignments."""
-        self.generic_visit(node)
 
         if (
             node.value
@@ -126,13 +122,13 @@ class ShapeChecker(ast.NodeVisitor):
         ):
             for target in node.targets:
                 if isinstance(target, ast.Name):
-                    self.value_table[target.id] = node.value.value
+                    self.scalar_values[target.id] = node.value.value
 
         inferred_shape = self._infer_shape(node.value) if node.value else None
 
         for target in node.targets:
             if isinstance(target, ast.Name):
-                self.symbol_table[target.id] = inferred_shape
+                self.shapes[target.id] = inferred_shape
 
     # ==========================================
     # 2. Core Inference
@@ -144,7 +140,7 @@ class ShapeChecker(ast.NodeVisitor):
             return None
 
         if isinstance(node, ast.Name):
-            return self.symbol_table.get(node.id)
+            return self.shapes.get(node.id)
 
         if isinstance(node, ast.Call):
             return self._infer_call_shape(node)
@@ -214,7 +210,7 @@ class ShapeChecker(ast.NodeVisitor):
         if not node.args or has_receiver + len(node.args) < 2:
             self._log_error(
                 node,
-                ShapeError.RESHAPE_MISMATCH,
+                ErrorCode.RESHAPE,
                 f"could not infer original shape: {ast.unparse(receiver_node) if receiver_node else 'unknown'} shape not found and missing argument ",
             )
             return None
@@ -234,7 +230,7 @@ class ShapeChecker(ast.NodeVisitor):
         if new_shape is None:
             self._log_error(
                 node,
-                ShapeError.RESHAPE_MISMATCH,
+                ErrorCode.RESHAPE,
                 f"could not infer new shape: {ast.unparse(new_shape_arg)} ",
             )
             return None
@@ -243,7 +239,7 @@ class ShapeChecker(ast.NodeVisitor):
         if any(isinstance(d, str) or d < 0 for d in old_shape):
             self._log_error(
                 node,
-                ShapeError.RESHAPE_MISMATCH,
+                ErrorCode.RESHAPE,
                 "All dimensions in the original shape must be positive. ",
             )
             return None
@@ -253,7 +249,7 @@ class ShapeChecker(ast.NodeVisitor):
         if any(isinstance(d, str) or d < -1 for d in new_shape):
             self._log_error(
                 node,
-                ShapeError.RESHAPE_MISMATCH,
+                ErrorCode.RESHAPE,
                 "New shape dimensions cannot be -2 or smaller. ",
             )
             return None
@@ -262,7 +258,7 @@ class ShapeChecker(ast.NodeVisitor):
         if new_shape.count(-1) > 1:
             self._log_error(
                 node,
-                ShapeError.RESHAPE_MISMATCH,
+                ErrorCode.RESHAPE,
                 "New shape cannot have multiple -1 dimensions. ",
             )
             return None
@@ -286,7 +282,7 @@ class ShapeChecker(ast.NodeVisitor):
 
         self._log_error(
             node,
-            ShapeError.RESHAPE_MISMATCH,
+            ErrorCode.RESHAPE,
             f"Cannot reshape array of size {old_total} into shape {new_shape}. ",
         )
         return None
@@ -472,7 +468,7 @@ class ShapeChecker(ast.NodeVisitor):
             right_name = ast.unparse(node.right)
             self._log_error(
                 node,
-                ShapeError.MATMUL_MISMATCH,
+                ErrorCode.MATMUL,
                 f"cannot multiply {left_name} {left_shape} and {right_name} {right_shape}: inner dimensions must match ({n1} != {n2}). ",
             )
             return None
@@ -483,7 +479,7 @@ class ShapeChecker(ast.NodeVisitor):
             right_name = ast.unparse(node.right)
             self._log_error(
                 node,
-                ShapeError.MATMUL_MISMATCH,
+                ErrorCode.MATMUL,
                 f"cannot multiply {left_name} {left_shape} and {right_name} {right_shape}: batch dimensions {batch_left} and {batch_right} are incompatible. ",
             )
             return None
@@ -510,7 +506,7 @@ class ShapeChecker(ast.NodeVisitor):
             right_name = ast.unparse(node.right)
             self._log_error(
                 node,
-                ShapeError.ELEMENTWISE_MISMATCH,
+                ErrorCode.ELEMENTWISE,
                 f"cannot combine {left_name} {left_shape} and {right_name} {right_shape} with element-wise operator. ",
             )
             return None
@@ -849,8 +845,8 @@ class ShapeChecker(ast.NodeVisitor):
             for elt in node.elts:
                 if isinstance(elt, ast.Constant) and isinstance(elt.value, int):
                     shape.append(elt.value)
-                elif isinstance(elt, ast.Name) and elt.id in self.value_table:
-                    val = self.value_table[elt.id]
+                elif isinstance(elt, ast.Name) and elt.id in self.scalar_values:
+                    val = self.scalar_values[elt.id]
                     if isinstance(val, (int, float)):
                         shape.append(int(val))
                 elif isinstance(elt, ast.UnaryOp) and isinstance(elt.op, ast.USub):
@@ -901,7 +897,7 @@ class ShapeChecker(ast.NodeVisitor):
                 return None
         return tuple(result)
 
-    def _log_error(self, node: ast.AST, err_type: ShapeError, message: str) -> None:
+    def _log_error(self, node: ast.AST, err_type: ErrorCode, message: str) -> None:
         """Logs structured errors matching test assertion requirements."""
         line_no = getattr(node, "lineno", 0)
         self.errors.append(

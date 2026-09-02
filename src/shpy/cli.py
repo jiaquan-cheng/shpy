@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from shpy.checker import ShapeChecker
+from shpy.checker import Checker
 
 try:
     __version__ = importlib.metadata.version("shpy")
@@ -58,7 +58,7 @@ def main() -> None:
             all_errors.append(f"{filepath}:{e.lineno}: error: [SyntaxError] {e.msg} ")
             continue
 
-        checker = ShapeChecker()
+        checker = Checker()
         checker.visit(tree)
 
         for error in checker.errors:

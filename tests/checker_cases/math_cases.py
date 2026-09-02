@@ -1,6 +1,6 @@
 import pytest
 
-from shpy.checker import ShapeError
+from shpy.checker import ErrorCode
 
 MATH_CASES = [
     pytest.param(
@@ -36,10 +36,10 @@ MATH_CASES = [
         """,
         {"a": (2, 2), "b": (2, 3), "c": (2, 3), "d": (2, 3), "e": (2, 3), "f": (2, 3)},
         [
-            {"line": 3, "code": ShapeError.ELEMENTWISE_MISMATCH.value},
-            {"line": 4, "code": ShapeError.ELEMENTWISE_MISMATCH.value},
-            {"line": 5, "code": ShapeError.ELEMENTWISE_MISMATCH.value},
-            {"line": 6, "code": ShapeError.ELEMENTWISE_MISMATCH.value},
+            {"line": 3, "code": ErrorCode.ELEMENTWISE.value},
+            {"line": 4, "code": ErrorCode.ELEMENTWISE.value},
+            {"line": 5, "code": ErrorCode.ELEMENTWISE.value},
+            {"line": 6, "code": ErrorCode.ELEMENTWISE.value},
         ],
         id="binary_operation_mismatch",
     ),
@@ -60,7 +60,7 @@ MATH_CASES = [
         c: Annotated[np.ndarray, (2, 3)] = a @ b
         """,
         {"a": (2, 2), "b": (3, 3), "c": (2, 3)},
-        [{"line": 3, "code": ShapeError.MATMUL_MISMATCH.value}],
+        [{"line": 3, "code": ErrorCode.MATMUL.value}],
         id="matrix_multiplication_mismatch",
     ),
     pytest.param(
@@ -94,9 +94,9 @@ MATH_CASES = [
         """,
         {"a": (2, 2, 2), "b": (3, 2, 3), "c": (2, 3), "d": (7, 3), "e": (2, 3)},
         [
-            {"line": 3, "code": ShapeError.MATMUL_MISMATCH.value},
-            {"line": 4, "code": ShapeError.ANNOTATION_MISMATCH.value},
-            {"line": 5, "code": ShapeError.MATMUL_MISMATCH.value},
+            {"line": 3, "code": ErrorCode.MATMUL.value},
+            {"line": 4, "code": ErrorCode.ANNOTATION.value},
+            {"line": 5, "code": ErrorCode.MATMUL.value},
         ],
         id="matrix_multiplication_multi_dimensions_mismatch",
     ),
@@ -154,12 +154,12 @@ MATH_CASES = [
             "g": (2,),
         },
         [
-            {"line": 2, "code": ShapeError.ANNOTATION_MISMATCH.value},
-            {"line": 3, "code": ShapeError.ANNOTATION_MISMATCH.value},
-            {"line": 4, "code": ShapeError.ANNOTATION_MISMATCH.value},
-            {"line": 5, "code": ShapeError.ANNOTATION_MISMATCH.value},
-            {"line": 6, "code": ShapeError.ANNOTATION_MISMATCH.value},
-            {"line": 7, "code": ShapeError.ANNOTATION_MISMATCH.value},
+            {"line": 2, "code": ErrorCode.ANNOTATION.value},
+            {"line": 3, "code": ErrorCode.ANNOTATION.value},
+            {"line": 4, "code": ErrorCode.ANNOTATION.value},
+            {"line": 5, "code": ErrorCode.ANNOTATION.value},
+            {"line": 6, "code": ErrorCode.ANNOTATION.value},
+            {"line": 7, "code": ErrorCode.ANNOTATION.value},
         ],
         id="reduction_operations_mismatch",
     ),

@@ -1,6 +1,6 @@
 import pytest
 
-from src.shpy.checker import ShapeError
+from src.shpy.checker import ErrorCode
 
 SHAPE_CASES = [
     pytest.param(
@@ -21,8 +21,8 @@ SHAPE_CASES = [
             """,
         {"a": (2, 3), "at": (2, 3), "b": (2, 3)},
         [
-            {"line": 2, "code": ShapeError.ANNOTATION_MISMATCH.value},
-            {"line": 3, "code": ShapeError.ANNOTATION_MISMATCH.value},
+            {"line": 2, "code": ErrorCode.ANNOTATION.value},
+            {"line": 3, "code": ErrorCode.ANNOTATION.value},
         ],
         id="transpose_mismatch",
     ),
@@ -57,11 +57,11 @@ SHAPE_CASES = [
         """,
         {"a": (2, 3), "b": (2, 3), "c": (2, 3), "d": None},
         [
-            {"line": 2, "code": ShapeError.RESHAPE_MISMATCH.value},
-            {"line": 3, "code": ShapeError.RESHAPE_MISMATCH.value},
-            {"line": 4, "code": ShapeError.RESHAPE_MISMATCH.value},
+            {"line": 2, "code": ErrorCode.RESHAPE.value},
+            {"line": 3, "code": ErrorCode.RESHAPE.value},
+            {"line": 4, "code": ErrorCode.RESHAPE.value},
         ],
-        id="reshape_mismatch",
+        id="RESHAPE",
     ),
     pytest.param(
         """
@@ -83,9 +83,9 @@ SHAPE_CASES = [
                 """,
         {"a": (2, 3), "b": (7,), "c": (7,), "d": (7,)},
         [
-            {"line": 2, "code": ShapeError.ANNOTATION_MISMATCH.value},
-            {"line": 3, "code": ShapeError.ANNOTATION_MISMATCH.value},
-            {"line": 4, "code": ShapeError.ANNOTATION_MISMATCH.value},
+            {"line": 2, "code": ErrorCode.ANNOTATION.value},
+            {"line": 3, "code": ErrorCode.ANNOTATION.value},
+            {"line": 4, "code": ErrorCode.ANNOTATION.value},
         ],
         id="flatten_mismatch",
     ),
@@ -109,9 +109,9 @@ SHAPE_CASES = [
         """,
         {"a": (2, 3), "b": (7,), "c": (7,), "d": (7,)},
         [
-            {"line": 2, "code": ShapeError.ANNOTATION_MISMATCH.value},
-            {"line": 3, "code": ShapeError.ANNOTATION_MISMATCH.value},
-            {"line": 4, "code": ShapeError.ANNOTATION_MISMATCH.value},
+            {"line": 2, "code": ErrorCode.ANNOTATION.value},
+            {"line": 3, "code": ErrorCode.ANNOTATION.value},
+            {"line": 4, "code": ErrorCode.ANNOTATION.value},
         ],
         id="ravel_mismatch",
     ),
@@ -149,10 +149,10 @@ SHAPE_CASES = [
             "e": (2, 3),
         },
         [
-            {"line": 2, "code": ShapeError.ANNOTATION_MISMATCH.value},
-            {"line": 3, "code": ShapeError.ANNOTATION_MISMATCH.value},
-            {"line": 4, "code": ShapeError.ANNOTATION_MISMATCH.value},
-            {"line": 5, "code": ShapeError.ANNOTATION_MISMATCH.value},
+            {"line": 2, "code": ErrorCode.ANNOTATION.value},
+            {"line": 3, "code": ErrorCode.ANNOTATION.value},
+            {"line": 4, "code": ErrorCode.ANNOTATION.value},
+            {"line": 5, "code": ErrorCode.ANNOTATION.value},
         ],
         id="squeeze_mismatch",
     ),
@@ -187,11 +187,11 @@ SHAPE_CASES = [
         """,
         {"a": (2, 3), "b": (2, 3), "c": (2, 3), "d": (2, 3), "e": (2, 3), "f": (2, 3)},
         [
-            {"line": 2, "code": ShapeError.ANNOTATION_MISMATCH.value},
-            {"line": 3, "code": ShapeError.ANNOTATION_MISMATCH.value},
-            {"line": 4, "code": ShapeError.ANNOTATION_MISMATCH.value},
-            {"line": 5, "code": ShapeError.ANNOTATION_MISMATCH.value},
-            {"line": 6, "code": ShapeError.ANNOTATION_MISMATCH.value},
+            {"line": 2, "code": ErrorCode.ANNOTATION.value},
+            {"line": 3, "code": ErrorCode.ANNOTATION.value},
+            {"line": 4, "code": ErrorCode.ANNOTATION.value},
+            {"line": 5, "code": ErrorCode.ANNOTATION.value},
+            {"line": 6, "code": ErrorCode.ANNOTATION.value},
         ],
         id="expand_dims_mismatch",
     ),
@@ -220,9 +220,9 @@ SHAPE_CASES = [
         """,
         {"a": (2, 3, 4), "b": (2, 3, 4), "c": (2, 3, 4), "d": (2, 3, 4)},
         [
-            {"line": 2, "code": ShapeError.ANNOTATION_MISMATCH.value},
-            {"line": 3, "code": ShapeError.ANNOTATION_MISMATCH.value},
-            {"line": 4, "code": ShapeError.ANNOTATION_MISMATCH.value},
+            {"line": 2, "code": ErrorCode.ANNOTATION.value},
+            {"line": 3, "code": ErrorCode.ANNOTATION.value},
+            {"line": 4, "code": ErrorCode.ANNOTATION.value},
         ],
         id="swapaxes_mismatch",
     ),
@@ -246,9 +246,9 @@ SHAPE_CASES = [
         """,
         {"a": (2, 3), "b": (2, 3), "c": (2, 3), "d": (2, 3)},
         [
-            {"line": 2, "code": ShapeError.ANNOTATION_MISMATCH.value},
-            {"line": 3, "code": ShapeError.ANNOTATION_MISMATCH.value},
-            {"line": 4, "code": ShapeError.ANNOTATION_MISMATCH.value},
+            {"line": 2, "code": ErrorCode.ANNOTATION.value},
+            {"line": 3, "code": ErrorCode.ANNOTATION.value},
+            {"line": 4, "code": ErrorCode.ANNOTATION.value},
         ],
         id="resize_mismatch",
     ),
