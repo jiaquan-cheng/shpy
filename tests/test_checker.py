@@ -38,11 +38,17 @@ def test_checker(code, expected_symbols, expected_errors):
             f"\nError line mismatch:\n"
             f"  Expected line: {expected['line']}\n"
             f"  Actual line:   {actual['line']}\n"
+            f"  Expected code: {expected['code']}\n"
+            f"  Actual code:   {actual['code']}\n"
+            f"  Message:       {actual.get('message')}\n"
             f"  Full table:    {checker.shapes}"
         )
         assert actual["code"] == expected["code"], (
             f"\nError code mismatch:\n"
+            f"  Expected line: {expected['line']}\n"
+            f"  Actual line:   {actual['line']}\n"
             f"  Expected code: {expected['code']}\n"
             f"  Actual code:   {actual['code']}\n"
+            f"  Message:       {actual.get('message')}\n"
             f"  Full table:    {checker.shapes}"
         )

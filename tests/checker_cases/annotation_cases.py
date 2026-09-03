@@ -237,4 +237,34 @@ ANNOTATION_CASES = [
         ],
         id="sequence_and_grid_functions_mismatch",
     ),
+    pytest.param(
+        """
+        n = 5
+        m = 3.0
+        a: Annotated[np.ndarray, (n, m)] = np.zeros((5, 3))
+        b: Annotated[np.ndarray, (n,)] = np.ones(n)
+        """,
+        {"n": (1,), "m": (1,), "a": (5, 3), "b": (5,)},
+        [],
+        id="scalar_variable_in_annotation_success",
+    ),
+    pytest.param(
+        """
+        n = 5
+        m = 3
+        f = 3.5
+        a: Annotated[np.ndarray, (n, m)] = np.zeros((4, 3))
+        b: Annotated[np.ndarray, (n,)] = np.ones(m)
+        c: Annotated[np.ndarray, (f,)] = np.ones(3)
+        d: Annotated[np.ndarray, (3,)] = np.zeros((f, 2))
+        """,
+        {"n": (1,), "m": (1,), "f": (1,), "a": (5, 3), "b": (5,), "c": (3,), "d": (3,)},
+        [
+            {"line": 4, "code": ErrorCode.ANNOTATION.value},
+            {"line": 5, "code": ErrorCode.ANNOTATION.value},
+            {"line": 6, "code": ErrorCode.VALUE.value},
+            {"line": 7, "code": ErrorCode.VALUE.value},
+        ],
+        id="scalar_variable_in_annotation_mismatch",
+    ),
 ]

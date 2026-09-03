@@ -9,6 +9,7 @@ class ErrorCode(Enum):
     ELEMENTWISE = "Elementwise"
     MATMUL = "MatMul"
     RESHAPE = "Reshape"
+    VALUE = "Value"
 
 
 class Checker(ast.NodeVisitor):
@@ -815,11 +816,22 @@ class Checker(ast.NodeVisitor):
                 ):
                     shape.append(item.value)
                 elif isinstance(item, ast.Name):
-                    shape.append(item.id)
+                    if item.id in self.scalar_values:
+                        value = self.scalar_values[item.id]
+                        if value.is_integer():
+                            shape.append(int(value))
+                        else:
+                            self._log_error(
+                                node,
+                                ErrorCode.VALUE,
+                                f"Scalar variable '{item.id}' must be an integer, got {value}.",
+                            )
+                            return None
+                    else:
+                        shape.append(item.id)
                 else:
-                    shape.append(ast.unparse(item))
+                    return None
             return tuple(shape)
-
         return None
 
     def _extract_shape_from_list_or_tuple_or_constant(
@@ -828,8 +840,21 @@ class Checker(ast.NodeVisitor):
         """Extracts shape from a list or tuple of constants or an expression."""
         if isinstance(node, ast.Constant) and isinstance(node.value, int):
             return (node.value,)
-
-        if (
+        elif isinstance(node, ast.Name):
+            if node.id in self.scalar_values:
+                value = self.scalar_values[node.id]
+                if value.is_integer():
+                    return (int(value),)
+                else:
+                    self._log_error(
+                        node,
+                        ErrorCode.VALUE,
+                        f"Scalar variable '{node.id}' must be an integer, got {value}.",
+                    )
+                    return None
+            else:
+                return (node.id,)
+        elif (
             isinstance(node, ast.UnaryOp)
             and isinstance(node.op, ast.USub)
             and isinstance(node.operand, ast.Constant)
@@ -837,7 +862,7 @@ class Checker(ast.NodeVisitor):
         ):
             return (-int(node.operand.value),)
 
-        if isinstance(node, (ast.List, ast.Tuple)):
+        elif isinstance(node, (ast.List, ast.Tuple)):
             if not node.elts:
                 return (0,)
 
@@ -846,14 +871,30 @@ class Checker(ast.NodeVisitor):
                 if isinstance(elt, ast.Constant) and isinstance(elt.value, int):
                     shape.append(elt.value)
                 elif isinstance(elt, ast.Name) and elt.id in self.scalar_values:
-                    val = self.scalar_values[elt.id]
-                    if isinstance(val, (int, float)):
-                        shape.append(int(val))
+                    value = self.scalar_values[elt.id]
+                    if value.is_integer():
+                        shape.append(int(value))
+                    else:
+                        self._log_error(
+                            node,
+                            ErrorCode.VALUE,
+                            f"Scalar variable '{elt.id}' must be an integer, got {value}.",
+                        )
+                        return None
                 elif isinstance(elt, ast.UnaryOp) and isinstance(elt.op, ast.USub):
                     if isinstance(elt.operand, ast.Constant) and isinstance(
                         elt.operand.value, (int, float)
                     ):
-                        shape.append(-int(elt.operand.value))
+                        value = elt.operand.value
+                        if value.is_integer():
+                            shape.append(-int(value))
+                        else:
+                            self._log_error(
+                                node,
+                                ErrorCode.VALUE,
+                                f"Scalar value must be an integer, got {value}.",
+                            )
+                            return None
                 elif isinstance(elt, ast.Name):
                     shape.append(elt.id)
                 else:

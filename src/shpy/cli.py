@@ -48,7 +48,7 @@ def main() -> None:
     args = parser.parse_args()
     files = discover_files(args.paths)
     all_errors = []
-    all_symbols: dict[Path, dict[str, tuple[Any, ...] | None]] = {}
+    all_shapes: dict[Path, dict[str, tuple[Any, ...] | None]] = {}
 
     for filepath in files:
         try:
@@ -69,14 +69,14 @@ def main() -> None:
             all_errors.append(f"{filepath}:{line}:{col}: error: [{code}] {msg}")
 
         if args.show_shapes:
-            all_symbols[filepath] = checker.symbol_table
+            all_shapes[filepath] = checker.shapes
 
-    if args.show_shapes and all_symbols:
+    if args.show_shapes and all_shapes:
         print("\n-------- Shapes Found --------")
 
-        for filepath in sorted(all_symbols.keys(), key=str):
+        for filepath in sorted(all_shapes.keys(), key=str):
             print(f"\n{filepath}:")
-            symbols = all_symbols[filepath]
+            symbols = all_shapes[filepath]
             symbols_with_no_shape: list = []
 
             if not symbols:
