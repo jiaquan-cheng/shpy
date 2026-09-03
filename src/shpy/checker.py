@@ -24,27 +24,19 @@ class Checker(ast.NodeVisitor):
 
         self.call_handlers = {
             "array": lambda node: (
-                self._traverse_literal_node(node.args[0]) if node.args else None
+                self._extract_literal_shape(node.args[0]) if node.args else None
             ),
             "zeros": lambda node: (
-                self._extract_shape_from_list_or_tuple_or_constant(node.args[0])
-                if node.args
-                else None
+                self._extract_expr_shape(node.args[0]) if node.args else None
             ),
             "ones": lambda node: (
-                self._extract_shape_from_list_or_tuple_or_constant(node.args[0])
-                if node.args
-                else None
+                self._extract_expr_shape(node.args[0]) if node.args else None
             ),
             "empty": lambda node: (
-                self._extract_shape_from_list_or_tuple_or_constant(node.args[0])
-                if node.args
-                else None
+                self._extract_expr_shape(node.args[0]) if node.args else None
             ),
             "full": lambda node: (
-                self._extract_shape_from_list_or_tuple_or_constant(node.args[0])
-                if node.args
-                else None
+                self._extract_expr_shape(node.args[0]) if node.args else None
             ),
             "reshape": lambda node: self._infer_reshape(node),
             "flatten": lambda node: self._infer_flatten(node),
@@ -101,7 +93,7 @@ class Checker(ast.NodeVisitor):
         ):
             self.scalar_values[var_name] = node.value.value
 
-        annotated_shape = self._extract_annotation(node.annotation)
+        annotated_shape = self._extract_annotation_shape(node.annotation)
         inferred_shape = self._infer_shape(node.value) if node.value else None
 
         self.shapes[var_name] = annotated_shape if annotated_shape else inferred_shape
@@ -199,16 +191,12 @@ class Checker(ast.NodeVisitor):
 
     def _infer_reshape(self, node: ast.Call) -> tuple[int | str, ...] | None:
         """Handles reshape operations."""
-        receiver_node = (
-            node.func.value if isinstance(node.func, ast.Attribute) else None
-        )
-        receiver_shape = (
-            self._infer_shape(receiver_node) if receiver_node is not None else None
-        )
-        has_receiver = 1 if receiver_shape is not None else 0
+        old_shape, args = self._extract_call_target(node)
 
-        # checks if receiver has shape in receiver.reshape(new_shape) else np.reshape(old_shape, new_shape)
-        if not node.args or has_receiver + len(node.args) < 2:
+        if not args or old_shape is None:
+            receiver_node = (
+                node.func.value if isinstance(node.func, ast.Attribute) else None
+            )
             self._log_error(
                 node,
                 ErrorCode.RESHAPE,
@@ -216,18 +204,9 @@ class Checker(ast.NodeVisitor):
             )
             return None
 
-        old_shape = (
-            self._infer_shape(node.args[0])
-            if receiver_shape is None
-            else receiver_shape
-        )
-        new_shape_idx = 1 if receiver_shape is None else 0
+        new_shape_arg = args[0]
+        new_shape = self._extract_expr_shape(new_shape_arg)
 
-        new_shape_arg = node.args[new_shape_idx]
-        new_shape = self._extract_shape_from_list_or_tuple_or_constant(new_shape_arg)
-
-        if old_shape is None:
-            return None
         if new_shape is None:
             self._log_error(
                 node,
@@ -290,42 +269,31 @@ class Checker(ast.NodeVisitor):
 
     def _infer_flatten(self, node: ast.Call) -> tuple[int | str, ...] | None:
         """Handles flatten and ravel operations."""
-        target_node = None
-        if isinstance(node, ast.Call):
-            if node.args:  # np.flatten(array)
-                target_node = node.args[0]
-            elif isinstance(node.func, ast.Attribute):  # receiver.flatten()
-                target_node = node.func.value
-        shape = self._infer_shape(target_node)
+        shape, _ = self._extract_call_target(node)
         if shape is not None:
             return (math.prod(shape),)
         return None
 
     def _infer_squeeze(self, node: ast.Call) -> tuple[int | str, ...] | None:
         """Handles squeeze operations, including an optional axis."""
-        target_node = node.func.value if isinstance(node.func, ast.Attribute) else None
-        shape = self._infer_shape(target_node)
-        if target_node is not None and shape is not None:
-            axis_node = node.args[0] if node.args else None
-        else:
-            target_node = node.args[0] if node.args else None
-            axis_node = node.args[1] if len(node.args) > 1 else None
+        shape, args = self._extract_call_target(node)
+        if shape is None:
+            return None
 
+        axis_node = args[0] if args else None
         if axis_node is None:
             axis_node = next(
                 (keyword.value for keyword in node.keywords if keyword.arg == "axis"),
                 None,
             )
 
-        shape = self._infer_shape(target_node)
-        if shape is None:
-            return None
         if axis_node is None:
             return tuple(dimension for dimension in shape if dimension != 1)
 
-        axis_shape = self._extract_shape_from_list_or_tuple_or_constant(axis_node)
+        axis_shape = self._extract_expr_shape(axis_node)
         if axis_shape is None:
             return None
+
         axes: list[int] = []
         for axis in axis_shape:
             if not isinstance(axis, int) or not -len(shape) <= axis < len(shape):
@@ -334,68 +302,47 @@ class Checker(ast.NodeVisitor):
             if normalized_axis in axes or shape[normalized_axis] != 1:
                 return None
             axes.append(normalized_axis)
+
         return tuple(
             dimension for index, dimension in enumerate(shape) if index not in axes
         )
 
     def _infer_expand_dims(self, node: ast.Call) -> tuple[int | str, ...] | None:
         """Handles expand_dims operations."""
+        shape, args = self._extract_call_target(node)
+        if shape is None:
+            return None
 
-        target_node = node.func.value if isinstance(node.func, ast.Attribute) else None
-        shape = self._infer_shape(target_node)
-        if target_node is not None and shape is not None:
-            axis_node = node.args[0] if node.args else None
-        else:
-            target_node = node.args[0] if node.args else None
-            axis_node = node.args[1] if len(node.args) > 1 else None
-
+        axis_node = args[0] if args else None
         if axis_node is None:
             axis_node = next(
                 (keyword.value for keyword in node.keywords if keyword.arg == "axis"),
                 None,
             )
 
-        shape = self._infer_shape(target_node)
         axis_shape = (
-            self._extract_shape_from_list_or_tuple_or_constant(axis_node)
-            if axis_node is not None
-            else None
+            self._extract_expr_shape(axis_node) if axis_node is not None else None
         )
-        if shape is None or axis_shape is None or len(axis_shape) != 1:
+        if axis_shape is None or len(axis_shape) != 1:
             return None
 
         axis = axis_shape[0]
         if not isinstance(axis, int) or not -len(shape) - 1 <= axis <= len(shape):
             return None
+
         insert_at = axis if axis >= 0 else len(shape) + axis + 1
         return shape[:insert_at] + (1,) + shape[insert_at:]
 
     def _infer_swapaxes(self, node: ast.Call) -> tuple[int | str, ...] | None:
         """Handles swapaxes operations."""
-        target_node = node.func.value if isinstance(node.func, ast.Attribute) else None
-        shape = self._infer_shape(target_node)
-        if target_node is not None and shape is not None:
-            first_axis_node = node.args[0] if node.args else None
-            second_axis_node = node.args[1] if len(node.args) > 1 else None
-        else:
-            target_node = node.args[0] if node.args else None
-            first_axis_node = node.args[1] if len(node.args) > 1 else None
-            second_axis_node = node.args[2] if len(node.args) > 2 else None
+        shape, args = self._extract_call_target(node)
+        if shape is None or len(args) < 2:
+            return None
 
-        shape = self._infer_shape(target_node)
-        first_axis_shape = (
-            self._extract_shape_from_list_or_tuple_or_constant(first_axis_node)
-            if first_axis_node is not None
-            else None
-        )
-        second_axis_shape = (
-            self._extract_shape_from_list_or_tuple_or_constant(second_axis_node)
-            if second_axis_node is not None
-            else None
-        )
+        first_axis_shape = self._extract_expr_shape(args[0])
+        second_axis_shape = self._extract_expr_shape(args[1])
         if (
-            shape is None
-            or first_axis_shape is None
+            first_axis_shape is None
             or second_axis_shape is None
             or len(first_axis_shape) != 1
             or len(second_axis_shape) != 1
@@ -437,7 +384,7 @@ class Checker(ast.NodeVisitor):
         )
         if shape_node is None:
             return None
-        return self._extract_shape_from_list_or_tuple_or_constant(shape_node)
+        return self._extract_expr_shape(shape_node)
 
     def _infer_transpose(self, node: ast.Attribute) -> tuple[int | str, ...] | None:
         """Handles transpose operations."""
@@ -516,18 +463,18 @@ class Checker(ast.NodeVisitor):
     def _infer_random_shape(self, node: ast.Call) -> tuple[int | str, ...] | None:
         """Handles random functions that take dimensions either as separate positional arguments or a tuple/list size."""
         if len(node.args) == 1:
-            extracted = self._extract_shape_from_list_or_tuple_or_constant(node.args[0])
+            extracted = self._extract_expr_shape(node.args[0])
             if extracted is not None:
                 return extracted
 
         shape: list[int | str] = []
         for arg in node.args:
-            extracted = self._extract_shape_from_list_or_tuple_or_constant(arg)
+            extracted = self._extract_expr_shape(arg)
             if extracted and len(extracted) == 1:
                 shape.append(extracted[0])
             else:
-                shape.append(ast.unparse(arg))
-        return tuple(shape) if shape else (1,)
+                return None
+        return tuple(shape) if shape else None
 
     def _infer_randint_shape(self, node: ast.Call) -> tuple[int | str, ...] | None:
         """Handles randint and similar functions where shape can be passed via a size keyword or positional argument."""
@@ -545,11 +492,11 @@ class Checker(ast.NodeVisitor):
                 or len(node.args) == 2
             ):
                 # If only high or low,high are given without size, it returns a scalar
-                return (1,)
+                return None
 
         if size_node is not None:
-            return self._extract_shape_from_list_or_tuple_or_constant(size_node)
-        return (1,)
+            return self._extract_expr_shape(size_node)
+        return None
 
     def _infer_random_distribution_shape(
         self, node: ast.Call
@@ -560,40 +507,28 @@ class Checker(ast.NodeVisitor):
             None,
         )
         if size_node is not None:
-            return self._extract_shape_from_list_or_tuple_or_constant(size_node)
+            return self._extract_expr_shape(size_node)
 
         # Fallback to positional arguments if size isn't specified (e.g., trailing args can represent parameters or size depending on function)
         return None
 
     def _infer_reduction(self, node: ast.Call) -> tuple[int | str, ...] | None:
         """Handles reduction operations like sum, mean, prod, min, max."""
-        target_node = (
-            node.func.value
-            if isinstance(node.func, ast.Attribute)
-            and self._infer_shape(node.func.value) is not None
-            else None
-        )
+        shape, args = self._extract_call_target(node)
+        if shape is None:
+            return None
 
-        if target_node is not None:
-            axis_node = node.args[0] if node.args else None
-        else:
-            target_node = node.args[0] if node.args else None
-            axis_node = node.args[1] if len(node.args) > 1 else None
-
+        axis_node = args[0] if args else None
         if axis_node is None:
             axis_node = next(
                 (keyword.value for keyword in node.keywords if keyword.arg == "axis"),
                 None,
             )
 
-        shape = self._infer_shape(target_node)
-        if shape is None:
-            return None
-
         if axis_node is None:
             return (1,)
 
-        axis_shape = self._extract_shape_from_list_or_tuple_or_constant(axis_node)
+        axis_shape = self._extract_expr_shape(axis_node)
         if axis_shape is None:
             return None
 
@@ -656,13 +591,13 @@ class Checker(ast.NodeVisitor):
 
             if isinstance(s, ast.Slice):
                 # Slice operation: start:stop:step
-                start = self._eval_index_constant(s.lower) if s.lower is not None else 0
+                start = self._extract_dim_value(s.lower) if s.lower is not None else 0
                 stop = (
-                    self._eval_index_constant(s.upper)
+                    self._extract_dim_value(s.upper)
                     if s.upper is not None
                     else (current_dim if isinstance(current_dim, int) else None)
                 )
-                step = self._eval_index_constant(s.step) if s.step is not None else 1
+                step = self._extract_dim_value(s.step) if s.step is not None else 1
 
                 if (
                     isinstance(current_dim, int)
@@ -692,21 +627,6 @@ class Checker(ast.NodeVisitor):
 
         return tuple(result_shape)
 
-    def _eval_index_constant(self, node: ast.AST | None) -> int | None:
-        """Helper to evaluate simple constant integer indices or negative sign expressions."""
-        if node is None:
-            return None
-        if isinstance(node, ast.Constant) and isinstance(node.value, int):
-            return node.value
-        if (
-            isinstance(node, ast.UnaryOp)
-            and isinstance(node.op, ast.USub)
-            and isinstance(node.operand, ast.Constant)
-            and isinstance(node.operand.value, int)
-        ):
-            return -node.operand.value
-        return None
-
     def _infer_arange(self, node: ast.Call) -> tuple[int | str, ...] | None:
         """Handles np.arange(start, stop, step) or similar variations."""
         if len(node.args) < 2 and not any(
@@ -716,9 +636,9 @@ class Checker(ast.NodeVisitor):
 
         # If positional args are given as scalars: arange(start, stop, step)
         if len(node.args) >= 3:
-            start_val = self._eval_index_constant(node.args[0])
-            stop_val = self._eval_index_constant(node.args[1])
-            step_val = self._eval_index_constant(node.args[2])
+            start_val = self._extract_dim_value(node.args[0])
+            stop_val = self._extract_dim_value(node.args[1])
+            step_val = self._extract_dim_value(node.args[2])
             if (
                 isinstance(start_val, (int, float))
                 and isinstance(stop_val, (int, float))
@@ -728,15 +648,15 @@ class Checker(ast.NodeVisitor):
                 length = math.ceil((stop_val - start_val) / step_val)
                 return (max(0, int(length)),)
         elif len(node.args) == 2:
-            start_val = self._eval_index_constant(node.args[0])
-            stop_val = self._eval_index_constant(node.args[1])
+            start_val = self._extract_dim_value(node.args[0])
+            stop_val = self._extract_dim_value(node.args[1])
             if isinstance(start_val, (int, float)) and isinstance(
                 stop_val, (int, float)
             ):
                 length = math.ceil(stop_val - start_val)
                 return (max(0, int(length)),)
         elif len(node.args) == 1:
-            stop_val = self._eval_index_constant(node.args[0])
+            stop_val = self._extract_dim_value(node.args[0])
             if isinstance(stop_val, (int, float)):
                 return (max(0, int(stop_val)),)
 
@@ -747,13 +667,13 @@ class Checker(ast.NodeVisitor):
         # Check for keyword 'num'
         for kw in node.keywords:
             if kw.arg == "num":
-                val = self._extract_shape_from_list_or_tuple_or_constant(kw.value)
+                val = self._extract_expr_shape(kw.value)
                 if val and isinstance(val[0], int):
                     return val
 
         # Fallback positionally: linspace(start, stop, num=50) -> num is usually 3rd arg
         if len(node.args) >= 3:
-            val = self._extract_shape_from_list_or_tuple_or_constant(node.args[2])
+            val = self._extract_expr_shape(node.args[2])
             if val and isinstance(val[0], int):
                 return val
 
@@ -795,7 +715,63 @@ class Checker(ast.NodeVisitor):
     # 4. Helpers
     # ==========================================
 
-    def _extract_annotation(self, node: ast.AST) -> tuple[int | str, ...] | None:
+    def _extract_call_target(
+        self, node: ast.Call
+    ) -> tuple[tuple[int | str, ...] | None, list[ast.AST]]:
+        """
+        Normalizes a call node, returning (target_shape, remaining_args)
+        whether written as arr.op(*args) or np.op(arr, *args).
+        """
+        # 1. Check if it's a method call (e.g., x.squeeze(...))
+        if isinstance(node.func, ast.Attribute):
+            receiver_shape = self._infer_shape(node.func.value)
+            if receiver_shape is not None:
+                return receiver_shape, list(node.args)
+
+        # 2. Otherwise, it's a function call (e.g., np.squeeze(x, ...))
+        if node.args:
+            target_shape = self._infer_shape(node.args[0])
+            return target_shape, list(node.args[1:])
+
+        return None, []
+
+    def _extract_dim_value(self, node: ast.AST | None) -> int | str | None:
+        """Extracts a static integer, negative integer, or scalar/symbolic variable from a node."""
+        if node is None:
+            return None
+
+        # 1. Direct integer constant
+        if isinstance(node, ast.Constant) and isinstance(node.value, int):
+            return node.value
+
+        # 2. Negative integer via unary minus
+        if (
+            isinstance(node, ast.UnaryOp)
+            and isinstance(node.op, ast.USub)
+            and isinstance(node.operand, ast.Constant)
+            and isinstance(node.operand.value, (int, float))
+        ):
+            value = node.operand.value
+            if value.is_integer():
+                return -int(value)
+
+        # 3. Variable name (scalar lookup or symbolic string)
+        if isinstance(node, ast.Name):
+            if node.id not in self.scalar_values:
+                return node.id
+            value = self.scalar_values[node.id]
+            if not value.is_integer():
+                self._log_error(
+                    node,
+                    ErrorCode.VALUE,
+                    f"Scalar variable '{node.id}' must be an integer, got {value}.",
+                )
+                return None
+            return int(value)
+
+        return None
+
+    def _extract_annotation_shape(self, node: ast.AST) -> tuple[int | str, ...] | None:
         """Extracts shape from explicit annotations using native literal tuples/lists."""
         if not isinstance(node, ast.Subscript):
             return None
@@ -807,105 +783,47 @@ class Checker(ast.NodeVisitor):
             return None
 
         elt = slice_node.elts[1]
+        if not isinstance(elt, (ast.Tuple, ast.List)):
+            return None
 
-        if isinstance(elt, (ast.Tuple, ast.List)):
-            shape: list[int | str] = []
-            for item in elt.elts:
-                if isinstance(item, ast.Constant) and isinstance(
-                    item.value, (int, str)
-                ):
-                    shape.append(item.value)
-                elif isinstance(item, ast.Name):
-                    if item.id in self.scalar_values:
-                        value = self.scalar_values[item.id]
-                        if value.is_integer():
-                            shape.append(int(value))
-                        else:
-                            self._log_error(
-                                node,
-                                ErrorCode.VALUE,
-                                f"Scalar variable '{item.id}' must be an integer, got {value}.",
-                            )
-                            return None
-                    else:
-                        shape.append(item.id)
-                else:
-                    return None
-            return tuple(shape)
-        return None
+        shape: list[int | str] = []
+        for item in elt.elts:
+            # Allow explicit string literals in annotations (e.g., Annotated[Array, ("batch", 3)])
+            if isinstance(item, ast.Constant) and isinstance(item.value, str):
+                shape.append(item.value)
+                continue
 
-    def _extract_shape_from_list_or_tuple_or_constant(
-        self, node: ast.AST
-    ) -> tuple[int | str, ...] | None:
-        """Extracts shape from a list or tuple of constants or an expression."""
-        if isinstance(node, ast.Constant) and isinstance(node.value, int):
-            return (node.value,)
-        elif isinstance(node, ast.Name):
-            if node.id in self.scalar_values:
-                value = self.scalar_values[node.id]
-                if value.is_integer():
-                    return (int(value),)
-                else:
-                    self._log_error(
-                        node,
-                        ErrorCode.VALUE,
-                        f"Scalar variable '{node.id}' must be an integer, got {value}.",
-                    )
-                    return None
-            else:
-                return (node.id,)
-        elif (
-            isinstance(node, ast.UnaryOp)
-            and isinstance(node.op, ast.USub)
-            and isinstance(node.operand, ast.Constant)
-            and isinstance(node.operand.value, (int, float))
-        ):
-            return (-int(node.operand.value),)
-
-        elif isinstance(node, (ast.List, ast.Tuple)):
-            if not node.elts:
-                return (0,)
-
-            shape: list[int | str] = []
-            for elt in node.elts:
-                if isinstance(elt, ast.Constant) and isinstance(elt.value, int):
-                    shape.append(elt.value)
-                elif isinstance(elt, ast.Name) and elt.id in self.scalar_values:
-                    value = self.scalar_values[elt.id]
-                    if value.is_integer():
-                        shape.append(int(value))
-                    else:
-                        self._log_error(
-                            node,
-                            ErrorCode.VALUE,
-                            f"Scalar variable '{elt.id}' must be an integer, got {value}.",
-                        )
-                        return None
-                elif isinstance(elt, ast.UnaryOp) and isinstance(elt.op, ast.USub):
-                    if isinstance(elt.operand, ast.Constant) and isinstance(
-                        elt.operand.value, (int, float)
-                    ):
-                        value = elt.operand.value
-                        if value.is_integer():
-                            shape.append(-int(value))
-                        else:
-                            self._log_error(
-                                node,
-                                ErrorCode.VALUE,
-                                f"Scalar value must be an integer, got {value}.",
-                            )
-                            return None
-                elif isinstance(elt, ast.Name):
-                    shape.append(elt.id)
-                else:
-                    shape.append(ast.unparse(elt))
-            if len(shape) == 0:
+            val = self._extract_dim_value(item)
+            if val is None:
                 return None
-            return tuple(shape)
+            shape.append(val)
 
-        return None
+        return tuple(shape)
 
-    def _traverse_literal_node(self, node: ast.AST) -> tuple[int, ...]:
+    def _extract_expr_shape(self, node: ast.AST) -> tuple[int | str, ...] | None:
+        """Extracts shape from a list or tuple of constants or an expression."""
+        # 1. Check if top-level node is a single dimension value
+        top_val = self._extract_dim_value(node)
+        if top_val is not None:
+            return (top_val,)
+
+        if not isinstance(node, (ast.List, ast.Tuple)):
+            return None
+
+        if not node.elts:
+            return (0,)
+
+        shape: list[int | str] = []
+        for elt in node.elts:
+            val = self._extract_dim_value(elt)
+            if val is not None:
+                shape.append(val)
+            else:
+                return None
+
+        return tuple(shape) if shape else None
+
+    def _extract_literal_shape(self, node: ast.AST) -> tuple[int, ...]:
         """Calculates shape of lists/tuples recursively."""
         if not isinstance(node, (ast.List, ast.Tuple)):
             return ()
@@ -913,7 +831,7 @@ class Checker(ast.NodeVisitor):
             return (0,)
 
         current_dim = len(node.elts)
-        sub_shape = self._traverse_literal_node(node.elts[0])
+        sub_shape = self._extract_literal_shape(node.elts[0])
         return (current_dim,) + sub_shape
 
     def _broadcast_shapes(
