@@ -20,6 +20,7 @@ class Checker(ast.NodeVisitor):
         self.scalar_values: dict[
             str, int | float
         ] = {}  # tracks variable values of scalars, in case they are used in shape definitions
+        self.functions: dict[str, ast.FunctionDef] = {}
         self.errors: list[dict[str, Any]] = []
 
         self.call_handlers = {
@@ -123,6 +124,10 @@ class Checker(ast.NodeVisitor):
             if isinstance(target, ast.Name):
                 self.shapes[target.id] = inferred_shape
 
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        """Tracks function definitions and checks their bodies."""
+        self.functions[node.name] = node
+
     # ==========================================
     # 2. Core Inference
     # ==========================================
@@ -155,8 +160,13 @@ class Checker(ast.NodeVisitor):
         return None
 
     def _infer_call_shape(self, node: ast.Call) -> tuple[int | str, ...] | None:
-        """Infers shape from function calls like np.array, np.zeros, np.ones."""
+        """Infers shape from function calls like np.array, np.zeros, or user-defined functions."""
         func_name = ast.unparse(node.func)
+
+        # Check if it's a user-defined function call
+        if func_name in self.functions:
+            return self._infer_function_call(node, self.functions[func_name])
+
         for suffix in self.call_handlers:
             if func_name.endswith(suffix):
                 handler = self.call_handlers[suffix]
@@ -188,6 +198,31 @@ class Checker(ast.NodeVisitor):
     # ==========================================
     # 3. Specialized Handlers
     # ==========================================
+
+    def _infer_function_call(
+        self, node: ast.Call, func_node: ast.FunctionDef
+    ) -> tuple[int | str, ...] | None:
+        """Validates arguments against function annotations and returns the inferred return shape."""
+        for arg, param in zip(node.args, func_node.args.args):
+            if not param.annotation:
+                continue
+
+            expected_shape = self._extract_annotation_shape(param.annotation)
+            actual_shape = self._infer_shape(arg)
+
+            if not (expected_shape and actual_shape) or expected_shape == actual_shape:
+                continue
+
+            self._log_error(
+                node,
+                ErrorCode.ANNOTATION,
+                f"Argument annotated as {expected_shape}, but expression has the shape {actual_shape}. ",
+            )
+
+        if func_node.returns:
+            return self._extract_annotation_shape(func_node.returns)
+
+        return None
 
     def _infer_reshape(self, node: ast.Call) -> tuple[int | str, ...] | None:
         """Handles reshape operations."""

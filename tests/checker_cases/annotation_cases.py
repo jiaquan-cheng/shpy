@@ -267,4 +267,34 @@ ANNOTATION_CASES = [
         ],
         id="scalar_variable_in_annotation_mismatch",
     ),
+    pytest.param(
+        """
+        a: Annotated[np.ndarray, (9, 9)] = np.zeros((9, 9))
+        def transform(x: Annotated[np.ndarray, (10, 20)]) -> Annotated[np.ndarray, (20, 10)]:
+            a = np.zeros((20, 10))
+            return x.T
+
+        b: Annotated[np.ndarray, (10, 20)] = np.zeros((10, 20))
+        c: Annotated[np.ndarray, (20, 10)] = transform(b)
+        """,
+        {"a": (9, 9), "b": (10, 20), "c": (20, 10)},
+        [],
+        id="function_annotation",
+    ),
+    pytest.param(
+        """
+        def transform(x: Annotated[np.ndarray, (10, 20)]) -> Annotated[np.ndarray, (20, 10)]:
+            return x.T
+
+        a: Annotated[np.ndarray, (5, 5)] = np.zeros((5, 5))
+        b: Annotated[np.ndarray, (20, 10)] = transform(a)
+        c: Annotated[np.ndarray, (10, 20)] = transform(b.T)
+        """,
+        {"a": (5, 5), "b": (20, 10), "c": (10, 20)},
+        [
+            {"line": 5, "code": ErrorCode.ANNOTATION.value},
+            {"line": 6, "code": ErrorCode.ANNOTATION.value},
+        ],
+        id="function_annotation_mismatch",
+    ),
 ]
