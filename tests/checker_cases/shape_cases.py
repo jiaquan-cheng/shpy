@@ -35,6 +35,7 @@ SHAPE_CASES = [
         e: Annotated[np.ndarray, (16, 1)] = reshape(d, (16, 1))
         f: Annotated[np.ndarray, (8, 2)] = np.reshape(d, (8, -1))
         g: Annotated[np.ndarray, (2, 2, 2, 2)] = np.reshape(d, (2, 2, -1, 2))
+        h: Annotated[np.ndarray, (3, 2)] = np.reshape(a, (-1, 2))
         """,
         {
             "a": (2, 3),
@@ -44,6 +45,7 @@ SHAPE_CASES = [
             "e": (16, 1),
             "f": (8, 2),
             "g": (2, 2, 2, 2),
+            "h": (3, 2),
         },
         [],
         id="reshape_operations",
@@ -61,7 +63,7 @@ SHAPE_CASES = [
             {"line": 3, "code": ErrorCode.RESHAPE.value},
             {"line": 4, "code": ErrorCode.RESHAPE.value},
         ],
-        id="RESHAPE",
+        id="reshape_operations_mismatch",
     ),
     pytest.param(
         """
@@ -122,6 +124,8 @@ SHAPE_CASES = [
         c: Annotated[np.ndarray, (2, 3)] = np.squeeze(a)
         d: Annotated[np.ndarray, (2, 1, 3)] = a.squeeze(axis=0)
         e: Annotated[np.ndarray, (1, 2, 3)] = np.squeeze(a, axis=2)
+        f: Annotated[np.ndarray, (2, 3)] = np.squeeze(a, axis=(0, 2))
+        g: Annotated[np.ndarray, (1, 2, 3)] = np.squeeze(a, axis=-2)
         """,
         {
             "a": (1, 2, 1, 3),
@@ -129,6 +133,8 @@ SHAPE_CASES = [
             "c": (2, 3),
             "d": (2, 1, 3),
             "e": (1, 2, 3),
+            "f": (2, 3),
+            "g": (1, 2, 3),
         },
         [],
         id="squeeze",
@@ -140,6 +146,8 @@ SHAPE_CASES = [
         c: Annotated[np.ndarray, (1, 2, 3)] = np.squeeze(a)
         d: Annotated[np.ndarray, (1, 2, 3)] = a.squeeze(axis=0)
         e: Annotated[np.ndarray, (2, 3)] = np.squeeze(a, axis=2)
+        f: Annotated[np.ndarray, (1, 2, 3)] = np.squeeze(a, axis=(0, 2))
+        g: Annotated[np.ndarray, (2, 3)] = np.squeeze(a, axis=-2)
         """,
         {
             "a": (1, 2, 1, 3),
@@ -147,12 +155,16 @@ SHAPE_CASES = [
             "c": (1, 2, 3),
             "d": (1, 2, 3),
             "e": (2, 3),
+            "f": (1, 2, 3),
+            "g": (2, 3),
         },
         [
             {"line": 2, "code": ErrorCode.ANNOTATION.value},
             {"line": 3, "code": ErrorCode.ANNOTATION.value},
             {"line": 4, "code": ErrorCode.ANNOTATION.value},
             {"line": 5, "code": ErrorCode.ANNOTATION.value},
+            {"line": 6, "code": ErrorCode.ANNOTATION.value},
+            {"line": 7, "code": ErrorCode.ANNOTATION.value},
         ],
         id="squeeze_mismatch",
     ),
@@ -201,12 +213,14 @@ SHAPE_CASES = [
         b: Annotated[np.ndarray, (4, 3, 2)] = a.swapaxes(0, 2)
         c: Annotated[np.ndarray, (2, 4, 3)] = np.swapaxes(a, 1, 2)
         d: Annotated[np.ndarray, (3, 2, 4)] = swapaxes(a, 0, 1)
+        e: Annotated[np.ndarray, (4, 3, 2)] = np.swapaxes(a, -3, -1)
         """,
         {
             "a": (2, 3, 4),
             "b": (4, 3, 2),
             "c": (2, 4, 3),
             "d": (3, 2, 4),
+            "e": (4, 3, 2),
         },
         [],
         id="swapaxes",
@@ -217,12 +231,20 @@ SHAPE_CASES = [
         b: Annotated[np.ndarray, (2, 3, 4)] = a.swapaxes(0, 2)
         c: Annotated[np.ndarray, (2, 3, 4)] = np.swapaxes(a, 1, 2)
         d: Annotated[np.ndarray, (2, 3, 4)] = swapaxes(a, 0, 1)
+        e: Annotated[np.ndarray, (2, 3, 4)] = np.swapaxes(a, -3, -1)
         """,
-        {"a": (2, 3, 4), "b": (2, 3, 4), "c": (2, 3, 4), "d": (2, 3, 4)},
+        {
+            "a": (2, 3, 4),
+            "b": (2, 3, 4),
+            "c": (2, 3, 4),
+            "d": (2, 3, 4),
+            "e": (2, 3, 4),
+        },
         [
             {"line": 2, "code": ErrorCode.ANNOTATION.value},
             {"line": 3, "code": ErrorCode.ANNOTATION.value},
             {"line": 4, "code": ErrorCode.ANNOTATION.value},
+            {"line": 5, "code": ErrorCode.ANNOTATION.value},
         ],
         id="swapaxes_mismatch",
     ),

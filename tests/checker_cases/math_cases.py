@@ -12,6 +12,7 @@ MATH_CASES = [
         e: Annotated[np.ndarray, (2, 2)] = a / b * c
         f: float = 2
         g: Annotated[np.ndarray, (2, 2)] = f * a
+        h: Annotated[np.ndarray, (2, 3)] = np.ones((2, 1)) + np.ones((1, 3))
         """,
         {
             "a": (2, 2),
@@ -19,8 +20,9 @@ MATH_CASES = [
             "c": (2, 2),
             "d": (2, 2),
             "e": (2, 2),
-            "f": (1,),
+            "f": (),
             "g": (2, 2),
+            "h": (2, 3),
         },
         [],
         id="binary_operation",
@@ -108,7 +110,7 @@ MATH_CASES = [
         d: Annotated[np.ndarray, (2, 3)] = a * c
         e: Annotated[np.ndarray, (2, 3)] = b * c
         """,
-        {"a": (1,), "b": (1,), "c": (2, 3), "d": (2, 3), "e": (2, 3)},
+        {"a": (), "b": (), "c": (2, 3), "d": (2, 3), "e": (2, 3)},
         [],
         id="scalar_multiplication",
     ),
@@ -120,7 +122,9 @@ MATH_CASES = [
         d: Annotated[np.ndarray, (2, 3)] = np.prod(a, axis=-1)
         e: Annotated[np.ndarray, (3, 4)] = a.sum(axis=0)
         f: Annotated[np.ndarray, (2, 4)] = a.mean(axis=1)
-        g: Annotated[np.ndarray, (1,)] = np.sum(a)
+        g: Annotated[np.ndarray, ()] = np.sum(a)
+        h: Annotated[np.ndarray, (2,)] = np.sum(a, axis=(1, 2))
+        i: Annotated[np.ndarray, (3, 4)] = np.mean(a, axis=-3)
         """,
         {
             "a": (2, 3, 4),
@@ -129,7 +133,9 @@ MATH_CASES = [
             "d": (2, 3),
             "e": (3, 4),
             "f": (2, 4),
-            "g": (1,),
+            "g": (),
+            "h": (2,),
+            "i": (3, 4),
         },
         [],
         id="reduction_operations_success",
@@ -143,6 +149,7 @@ MATH_CASES = [
         e: Annotated[np.ndarray, (2, 4)] = a.sum(axis=0)
         f: Annotated[np.ndarray, (3, 4)] = a.mean(axis=1)
         g: Annotated[np.ndarray, (2,)] = np.sum(a)
+        h: Annotated[np.ndarray, (2, 3)] = np.sum(a, axis=5)
         """,
         {
             "a": (2, 3, 4),
@@ -152,6 +159,7 @@ MATH_CASES = [
             "e": (2, 4),
             "f": (3, 4),
             "g": (2,),
+            "h": (2, 3),
         },
         [
             {"line": 2, "code": ErrorCode.ANNOTATION.value},
@@ -160,6 +168,7 @@ MATH_CASES = [
             {"line": 5, "code": ErrorCode.ANNOTATION.value},
             {"line": 6, "code": ErrorCode.ANNOTATION.value},
             {"line": 7, "code": ErrorCode.ANNOTATION.value},
+            {"line": 8, "code": ErrorCode.ANNOTATION.value},
         ],
         id="reduction_operations_mismatch",
     ),

@@ -16,7 +16,7 @@ class ErrorCode(Enum):
 
 class Checker(ast.NodeVisitor):
     def __init__(self) -> None:
-        self.env = Environment()  # Replaces self.shapes and self.scalar_values
+        self.env = Environment()
         self.functions: dict[str, ast.FunctionDef] = {}
         self.errors: list[dict[str, Any]] = []
         self.active_calls: set[str] = set()
@@ -106,10 +106,14 @@ class Checker(ast.NodeVisitor):
         inferred_shape = self._infer_shape(node.value) if node.value else None
 
         self.env.set_shape(
-            var_name, annotated_shape if annotated_shape else inferred_shape
+            var_name, annotated_shape if annotated_shape is not None else inferred_shape
         )
 
-        if annotated_shape and inferred_shape and annotated_shape != inferred_shape:
+        if (
+            annotated_shape is not None
+            and inferred_shape is not None
+            and annotated_shape != inferred_shape
+        ):
             self._log_error(
                 node,
                 ErrorCode.ANNOTATION,
@@ -162,7 +166,7 @@ class Checker(ast.NodeVisitor):
         if isinstance(node, ast.Constant) and isinstance(
             node.value, (int, float, bool)
         ):
-            return (1,)
+            return ()
 
         if isinstance(node, ast.Attribute):
             return self._infer_attribute_shape(node)
@@ -219,44 +223,22 @@ class Checker(ast.NodeVisitor):
         func_name = func_node.name
 
         if func_name in self.active_calls:
-            # recursion detected, skip further inference to avoid infinite loop
             return None
 
-        for arg, param in zip(node.args, func_node.args.args):
-            if not param.annotation:
-                continue
-
-            expected_shape = self._extract_annotation_shape(param.annotation)
-            actual_shape = self._infer_shape(arg)
-
-            if not (expected_shape and actual_shape) or expected_shape == actual_shape:
-                continue
-
-            self._log_error(
-                node,
-                ErrorCode.ANNOTATION,
-                f"Argument annotated as {expected_shape}, but expression has the shape {actual_shape}. ",
-            )
-
-        if func_node.returns:
-            return self._extract_annotation_shape(func_node.returns)
-
-        # If unannotated, analyze the function body dynamically via traversal in a local scope
         self.active_calls.add(func_name)
         previous_env = self.env
         self.env = self.env.create_child()
 
-        inferred_return_shape = None
         try:
-            for stmt in func_node.body:
-                self.visit(stmt)
-                if isinstance(stmt, ast.Return):
-                    inferred_return_shape = self._infer_shape(stmt.value)
+            self._bind_function_arguments(node, func_node)
+
+            if func_node.returns:
+                return self._extract_annotation_shape(func_node.returns)
+
+            return self._evaluate_function_body(func_node.body)
         finally:
             self.env = previous_env
             self.active_calls.remove(func_name)
-
-        return inferred_return_shape
 
     def _infer_reshape(self, node: ast.Call) -> tuple[int | str, ...] | None:
         """Handles reshape operations."""
@@ -439,21 +421,11 @@ class Checker(ast.NodeVisitor):
         return tuple(swapped_shape)
 
     def _infer_resize(self, node: ast.Call) -> tuple[int | str, ...] | None:
-        """Handles resize operations."""
-        is_method_call = (
-            isinstance(node.func, ast.Attribute)
-            and self._infer_shape(node.func.value) is not None
-        )
-        shape_node = (
-            node.args[0]
-            if is_method_call and node.args
-            else node.args[1]
-            if not is_method_call and len(node.args) > 1
-            else None
-        )
-        if shape_node is None:
+        """Handles resize operations using _extract_call_target."""
+        shape, args = self._extract_call_target(node)
+        if shape is None or not args:
             return None
-        return self._extract_expr_shape(shape_node)
+        return self._extract_expr_shape(args[0])
 
     def _infer_transpose(self, node: ast.Attribute) -> tuple[int | str, ...] | None:
         """Handles transpose operations."""
@@ -552,7 +524,6 @@ class Checker(ast.NodeVisitor):
             None,
         )
         if size_node is None:
-            # Check if size is passed as a positional argument (usually 3rd arg for randint(low, high, size))
             if len(node.args) >= 3:
                 size_node = node.args[2]
             elif (
@@ -560,7 +531,6 @@ class Checker(ast.NodeVisitor):
                 and not isinstance(node.func, ast.Attribute)
                 or len(node.args) == 2
             ):
-                # If only high or low,high are given without size, it returns a scalar
                 return None
 
         if size_node is not None:
@@ -578,7 +548,6 @@ class Checker(ast.NodeVisitor):
         if size_node is not None:
             return self._extract_expr_shape(size_node)
 
-        # Fallback to positional arguments if size isn't specified (e.g., trailing args can represent parameters or size depending on function)
         return None
 
     def _infer_reduction(self, node: ast.Call) -> tuple[int | str, ...] | None:
@@ -587,27 +556,30 @@ class Checker(ast.NodeVisitor):
         if shape is None:
             return None
 
-        axis_node = args[0] if args else None
-        if axis_node is None:
-            axis_node = next(
-                (keyword.value for keyword in node.keywords if keyword.arg == "axis"),
-                None,
-            )
+        axis_node = next(
+            (kw.value for kw in node.keywords if kw.arg == "axis"),
+            args[0] if args else None,
+        )
 
-        if axis_node is None:
-            return (1,)
+        has_axis_kw = any(kw.arg == "axis" for kw in node.keywords)
 
-        axis_shape = self._extract_expr_shape(axis_node)
+        if axis_node is None and not has_axis_kw:
+            return ()
+
+        axis_shape = (
+            self._extract_expr_shape(axis_node) if axis_node is not None else None
+        )
         if axis_shape is None:
             return None
 
         axes: list[int] = []
         for axis in axis_shape:
             if not isinstance(axis, int) or not -len(shape) <= axis < len(shape):
-                return None
+                # Return the original shape on out-of-bounds axis to trigger an annotation mismatch error
+                return shape
             normalized_axis = axis + len(shape) if axis < 0 else axis
             if normalized_axis in axes:
-                return None
+                return shape
             axes.append(normalized_axis)
 
         keepdims = next(
@@ -627,13 +599,12 @@ class Checker(ast.NodeVisitor):
         )
 
     def _infer_subscript(self, node: ast.Subscript) -> tuple[int | str, ...] | None:
-        """Handles array slicing and indexing operations (e.g., a[0], a[1:3, :])."""
+        """Handles array slicing and indexing operations (e.g., a[0], a[1:3, :], a[::-1])."""
         shape = self._infer_shape(node.value)
         if shape is None:
             return None
 
         slice_node = node.slice
-        # Normalize slice into a tuple of slices/indices
         if isinstance(slice_node, ast.Tuple):
             slices = slice_node.elts
         else:
@@ -644,8 +615,6 @@ class Checker(ast.NodeVisitor):
 
         for s in slices:
             if isinstance(s, ast.Constant) and s.value is Ellipsis:
-                # Ellipsis matches as many dimensions as needed
-                # For simplicity in fixed rank shapes, count remaining dimensions
                 ellipsis_count = len(shape) - len(slices) + 1
                 for _ in range(max(0, ellipsis_count)):
                     if shape_idx < len(shape):
@@ -659,37 +628,78 @@ class Checker(ast.NodeVisitor):
             current_dim = shape[shape_idx]
 
             if isinstance(s, ast.Slice):
-                # Slice operation: start:stop:step
-                start = self._extract_dim_value(s.lower) if s.lower is not None else 0
-                stop = (
-                    self._extract_dim_value(s.upper)
-                    if s.upper is not None
-                    else (current_dim if isinstance(current_dim, int) else None)
-                )
-                step = self._extract_dim_value(s.step) if s.step is not None else 1
-
+                step_val = self._extract_dim_value(s.step) if s.step is not None else 1
                 if (
-                    isinstance(current_dim, int)
-                    and isinstance(start, int)
-                    and isinstance(stop, int)
-                    and isinstance(step, int)
+                    not isinstance(current_dim, int)
+                    or not isinstance(step_val, int)
+                    or step_val == 0
                 ):
-                    # Handle bounds and steps roughly
-                    start = max(0, min(start, current_dim))
-                    stop = max(0, min(stop, current_dim))
-                    effective_len = math.ceil((stop - start) / step) if step != 0 else 0
-                    result_shape.append(max(0, effective_len))
-                else:
                     result_shape.append(current_dim)
+                    shape_idx += 1
+                    continue
+
+                if step_val > 0:
+                    start_val = (
+                        self._extract_dim_value(s.lower) if s.lower is not None else 0
+                    )
+                    stop_val = (
+                        self._extract_dim_value(s.upper)
+                        if s.upper is not None
+                        else current_dim
+                    )
+
+                    if not isinstance(start_val, int) or not isinstance(stop_val, int):
+                        result_shape.append(current_dim)
+                        shape_idx += 1
+                        continue
+
+                    start = max(
+                        0,
+                        current_dim + start_val
+                        if start_val < 0
+                        else min(start_val, current_dim),
+                    )
+                    stop = max(
+                        0,
+                        current_dim + stop_val
+                        if stop_val < 0
+                        else min(stop_val, current_dim),
+                    )
+                    effective_len = math.ceil((stop - start) / step_val)
+                else:
+                    start_val = (
+                        self._extract_dim_value(s.lower)
+                        if s.lower is not None
+                        else current_dim - 1
+                    )
+                    stop_val = (
+                        self._extract_dim_value(s.upper) if s.upper is not None else -1
+                    )
+
+                    if not isinstance(start_val, int) or not isinstance(stop_val, int):
+                        result_shape.append(current_dim)
+                        shape_idx += 1
+                        continue
+
+                    if start_val < 0:
+                        start = max(-1, current_dim + start_val)
+                    else:
+                        start = min(start_val, current_dim - 1)
+
+                    if stop_val < -1:
+                        stop = max(-1, current_dim + stop_val)
+                    else:
+                        stop = min(stop_val, current_dim)
+
+                    effective_len = math.ceil((start - stop) / abs(step_val))
+
+                result_shape.append(max(0, effective_len))
                 shape_idx += 1
             elif isinstance(s, ast.Constant) and isinstance(s.value, int):
-                # Integer indexing drops the dimension
                 shape_idx += 1
             else:
-                # Other indexing expressions (like lists or advanced indexing)
                 shape_idx += 1
 
-        # Append any remaining dimensions if not fully consumed by slices/ellipsis
         while shape_idx < len(shape):
             result_shape.append(shape[shape_idx])
             shape_idx += 1
@@ -754,12 +764,12 @@ class Checker(ast.NodeVisitor):
         input_shapes = []
         for arg in node.args:
             shape = self._infer_shape(arg)
-            if shape and len(shape) == 1:
+            if shape is not None and len(shape) == 1:
                 input_shapes.append(shape[0])
             else:
                 return None
 
-        if not input_shapes:
+        if input_shapes is None:
             return None
 
         # Check indexing style (default is 'xy' which swaps the first two dimensions)
@@ -871,7 +881,6 @@ class Checker(ast.NodeVisitor):
 
     def _extract_expr_shape(self, node: ast.AST) -> tuple[int | str, ...] | None:
         """Extracts shape from a list or tuple of constants or an expression."""
-        # 1. Check if top-level node is a single dimension value
         top_val = self._extract_dim_value(node)
         if top_val is not None:
             return (top_val,)
@@ -880,7 +889,7 @@ class Checker(ast.NodeVisitor):
             return None
 
         if not node.elts:
-            return (0,)
+            return ()
 
         shape: list[int | str] = []
         for elt in node.elts:
@@ -890,7 +899,7 @@ class Checker(ast.NodeVisitor):
             else:
                 return None
 
-        return tuple(shape) if shape else None
+        return tuple(shape) if shape is not None else None
 
     def _extract_literal_shape(self, node: ast.AST) -> tuple[int, ...]:
         """Calculates shape of lists/tuples recursively."""
@@ -924,6 +933,44 @@ class Checker(ast.NodeVisitor):
             else:
                 return None
         return tuple(result)
+
+    def _bind_function_arguments(
+        self, node: ast.Call, func_node: ast.FunctionDef
+    ) -> None:
+        """Binds positional, default, and overridden argument shapes to the local scope."""
+        args_args = func_node.args.args
+        defaults = func_node.args.defaults
+        num_required = len(args_args) - len(defaults)
+        provided_shapes = [self._infer_shape(arg) for arg in node.args]
+
+        for i, param in enumerate(args_args):
+            arg_shape = provided_shapes[i] if i < len(provided_shapes) else None
+
+            if arg_shape is None and i >= num_required:
+                arg_shape = self._infer_shape(defaults[i - num_required])
+
+            if arg_shape is not None:
+                self.env.set_shape(param.arg, arg_shape)
+
+            if param.annotation and arg_shape:
+                expected_shape = self._extract_annotation_shape(param.annotation)
+                if expected_shape is not None and expected_shape != arg_shape:
+                    self._log_error(
+                        node,
+                        ErrorCode.ANNOTATION,
+                        f"Argument annotated as {expected_shape}, but expression has the shape {arg_shape}. ",
+                    )
+
+    def _evaluate_function_body(
+        self, body: list[ast.stmt]
+    ) -> tuple[int | str, ...] | None:
+        """Walks the function body statements and tracks the return shape."""
+        inferred_return_shape = None
+        for stmt in body:
+            self.visit(stmt)
+            if isinstance(stmt, ast.Return):
+                inferred_return_shape = self._infer_shape(stmt.value)
+        return inferred_return_shape
 
     def _log_error(self, node: ast.AST, err_type: ErrorCode, message: str) -> None:
         """Logs structured errors matching test assertion requirements."""

@@ -10,8 +10,18 @@ ANNOTATION_CASES = [
         c: Annotated[np.ndarray, (4, 2, 4)] = np.ones((4, 2, 4))
         d: Annotated[np.ndarray, (6, 3)] = np.empty((6, 3), 5)
         e: Annotated[np.ndarray, (2, 3)] = np.full((2, 3), 5)
+        f: Annotated[np.ndarray, ()] = np.ones(())
+        g: Annotated[np.ndarray, (0, 5)] = np.zeros((0, 5))
         """,
-        {"a": (2, 2), "b": (1, 1, 1, 1), "c": (4, 2, 4), "d": (6, 3), "e": (2, 3)},
+        {
+            "a": (2, 2),
+            "b": (1, 1, 1, 1),
+            "c": (4, 2, 4),
+            "d": (6, 3),
+            "e": (2, 3),
+            "f": (),
+            "g": (0, 5),
+        },
         [],
         id="explicit_annotations",
     ),
@@ -71,7 +81,7 @@ ANNOTATION_CASES = [
         c: Annotated[np.ndarray, (2, 3)] = np.full((a, b), 5)
         d: Annotated[np.ndarray, (2, 3)] = np.zeros((a, b))
         """,
-        {"a": (1,), "b": (1,), "c": (2, 3), "d": (2, 3)},
+        {"a": (), "b": (), "c": (2, 3), "d": (2, 3)},
         [],
         id="variable_shape_creation",
     ),
@@ -80,9 +90,9 @@ ANNOTATION_CASES = [
             a: float = 2
             b: int = 3
             c: Annotated[np.ndarray, (2, 1)] = np.full((a, b), 5)
-            d: Annotated[np.ndarray, (1, )] = np.zeros((a, b))
+            d: Annotated[np.ndarray, ()] = np.zeros((a, b))
             """,
-        {"a": (1,), "b": (1,), "c": (2, 1), "d": (1,)},
+        {"a": (), "b": (), "c": (2, 1), "d": ()},
         [
             {"line": 3, "code": ErrorCode.ANNOTATION.value},
             {"line": 4, "code": ErrorCode.ANNOTATION.value},
@@ -157,12 +167,18 @@ ANNOTATION_CASES = [
         step_slice: Annotated[np.ndarray, (3, 5, 3)] = a[0:5:2, :, ::2]
         scalar_multi: Annotated[np.ndarray, (5,)] = a[1, 2]
         ellipsis_slice: Annotated[np.ndarray, (5, 5)] = a[..., 0]
+        negative_slice: Annotated[np.ndarray, (2, 5)] = a[-2:, :, 0]
+        negative_index: Annotated[np.ndarray, (5, 5)] = a[-1]
+        reverse_slice: Annotated[np.ndarray, (5, 5, 5)] = a[::-1, ::-1, ::-1]
         """,
         {
             "a": (5, 5, 5),
             "step_slice": (3, 5, 3),
             "scalar_multi": (5,),
             "ellipsis_slice": (5, 5),
+            "negative_slice": (2, 5),
+            "negative_index": (5, 5),
+            "reverse_slice": (5, 5, 5),
         },
         [],
         id="slicing_edge_cases_success",
@@ -173,17 +189,26 @@ ANNOTATION_CASES = [
         step_slice: Annotated[np.ndarray, (2, 5, 2)] = a[0:5:2, :, ::2]
         scalar_multi: Annotated[np.ndarray, (5, 5)] = a[1, 2]
         ellipsis_slice: Annotated[np.ndarray, (5,)] = a[..., 0]
+        negative_slice: Annotated[np.ndarray, (3, 5)] = a[-2:, :, 0]
+        negative_index: Annotated[np.ndarray, (5,)] = a[-1]
+        reverse_slice: Annotated[np.ndarray, (3, 3, 3)] = a[::-1, ::-1, ::-1]
         """,
         {
             "a": (5, 5, 5),
             "step_slice": (2, 5, 2),
             "scalar_multi": (5, 5),
             "ellipsis_slice": (5,),
+            "negative_slice": (3, 5),
+            "negative_index": (5,),
+            "reverse_slice": (3, 3, 3),
         },
         [
             {"line": 2, "code": ErrorCode.ANNOTATION.value},
             {"line": 3, "code": ErrorCode.ANNOTATION.value},
             {"line": 4, "code": ErrorCode.ANNOTATION.value},
+            {"line": 5, "code": ErrorCode.ANNOTATION.value},
+            {"line": 6, "code": ErrorCode.ANNOTATION.value},
+            {"line": 7, "code": ErrorCode.ANNOTATION.value},
         ],
         id="slicing_edge_cases_mismatch",
     ),
@@ -195,7 +220,7 @@ ANNOTATION_CASES = [
         geom_space: Annotated[np.ndarray, (10,)] = np.geomspace(1, 1000, 10)
         x = np.array([1, 2, 3])
         y = np.array([4, 5])
-        grid: Annotated[np.ndarray, (2, 3)] = np.meshgrid(x, y) # Default indexing='xy' -> (len(y), len(x))
+        grid: Annotated[np.ndarray, (2, 3)] = np.meshgrid(x, y) 
         """,
         {
             "seq": (10,),
@@ -244,7 +269,7 @@ ANNOTATION_CASES = [
         a: Annotated[np.ndarray, (n, m)] = np.zeros((5, 3))
         b: Annotated[np.ndarray, (n,)] = np.ones(n)
         """,
-        {"n": (1,), "m": (1,), "a": (5, 3), "b": (5,)},
+        {"n": (), "m": (), "a": (5, 3), "b": (5,)},
         [],
         id="scalar_variable_in_annotation_success",
     ),
@@ -258,7 +283,7 @@ ANNOTATION_CASES = [
         c: Annotated[np.ndarray, (f,)] = np.ones(3)
         d: Annotated[np.ndarray, (3,)] = np.zeros((f, 2))
         """,
-        {"n": (1,), "m": (1,), "f": (1,), "a": (5, 3), "b": (5,), "c": (3,), "d": (3,)},
+        {"n": (), "m": (), "f": (), "a": (5, 3), "b": (5,), "c": (3,), "d": (3,)},
         [
             {"line": 4, "code": ErrorCode.ANNOTATION.value},
             {"line": 5, "code": ErrorCode.ANNOTATION.value},
@@ -336,5 +361,31 @@ ANNOTATION_CASES = [
             {"line": 8, "code": ErrorCode.ANNOTATION.value},
         ],
         id="unannotated_function_scope_and_mismatch_negative",
+    ),
+    pytest.param(
+        """
+        def func(x=np.zeros((2, 3))):
+            return x
+
+        res = func()
+        """,
+        {
+            "res": (2, 3),
+        },
+        [],
+        id="unannotated_function_default_arg_inferred",
+    ),
+    pytest.param(
+        """
+        def func(x=np.zeros((2, 3))):
+            return x
+
+        res = func(np.zeros((4, 4)))
+        """,
+        {
+            "res": (4, 4),
+        },
+        [],
+        id="unannotated_function_default_arg_overridden",
     ),
 ]
