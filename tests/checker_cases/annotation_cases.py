@@ -297,4 +297,44 @@ ANNOTATION_CASES = [
         ],
         id="function_annotation_mismatch",
     ),
+    pytest.param(
+        """
+        global_var = np.zeros((2, 2))
+        b = np.ones((3, 3))
+
+        def unannotated_func():
+            b = np.ones((2, 2))
+            return global_var + b
+
+        res = unannotated_func()
+        """,
+        {
+            "global_var": (2, 2),
+            "b": (3, 3),
+            "res": (2, 2),
+        },
+        [],
+        id="unannotated_function_scope_isolation_success",
+    ),
+    pytest.param(
+        """
+        global_var = np.zeros((2, 2))
+
+        def unannotated_func():
+            a = np.ones((5, 5))
+            b = global_var + a
+            return a
+
+        res: Annotated[np.ndarray, (4, 4)] = unannotated_func()
+        """,
+        {
+            "global_var": (2, 2),
+            "res": (4, 4),
+        },
+        [
+            {"line": 5, "code": ErrorCode.ELEMENTWISE.value},
+            {"line": 8, "code": ErrorCode.ANNOTATION.value},
+        ],
+        id="unannotated_function_scope_and_mismatch_negative",
+    ),
 ]

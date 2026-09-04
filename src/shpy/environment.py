@@ -7,6 +7,10 @@ class Environment:
         self.shapes: dict[str, tuple[Any, ...] | None] = {}
         self.scalar_values: dict[str, int | float] = {}
 
+    def create_child(self) -> "Environment":
+        """Factory method to spawn a nested local scope."""
+        return Environment(parent=self)
+
     def get_shape(self, name: str) -> tuple[Any, ...] | None:
         if name in self.shapes:
             return self.shapes[name]

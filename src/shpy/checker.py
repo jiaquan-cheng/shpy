@@ -19,6 +19,7 @@ class Checker(ast.NodeVisitor):
         self.env = Environment()  # Replaces self.shapes and self.scalar_values
         self.functions: dict[str, ast.FunctionDef] = {}
         self.errors: list[dict[str, Any]] = []
+        self.active_calls: set[str] = set()
 
         self.call_handlers = {
             "array": lambda node: (
@@ -135,7 +136,10 @@ class Checker(ast.NodeVisitor):
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         """Tracks function definitions and checks their bodies."""
-        self.functions[node.name] = node
+        if self.env.parent is None:
+            self.functions[node.name] = node
+
+        # no generic visit, we want to evaluate functions only if they are called somewhere
 
     # ==========================================
     # 2. Core Inference
@@ -212,6 +216,12 @@ class Checker(ast.NodeVisitor):
         self, node: ast.Call, func_node: ast.FunctionDef
     ) -> tuple[int | str, ...] | None:
         """Validates arguments against function annotations and returns the inferred return shape."""
+        func_name = func_node.name
+
+        if func_name in self.active_calls:
+            # recursion detected, skip further inference to avoid infinite loop
+            return None
+
         for arg, param in zip(node.args, func_node.args.args):
             if not param.annotation:
                 continue
@@ -231,7 +241,22 @@ class Checker(ast.NodeVisitor):
         if func_node.returns:
             return self._extract_annotation_shape(func_node.returns)
 
-        return None
+        # If unannotated, analyze the function body dynamically via traversal in a local scope
+        self.active_calls.add(func_name)
+        previous_env = self.env
+        self.env = self.env.create_child()
+
+        inferred_return_shape = None
+        try:
+            for stmt in func_node.body:
+                self.visit(stmt)
+                if isinstance(stmt, ast.Return):
+                    inferred_return_shape = self._infer_shape(stmt.value)
+        finally:
+            self.env = previous_env
+            self.active_calls.remove(func_name)
+
+        return inferred_return_shape
 
     def _infer_reshape(self, node: ast.Call) -> tuple[int | str, ...] | None:
         """Handles reshape operations."""
