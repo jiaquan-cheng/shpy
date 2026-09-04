@@ -49,6 +49,7 @@ def main() -> None:
     files = discover_files(args.paths)
     all_errors = []
     all_shapes: dict[Path, dict[str, tuple[Any, ...] | None]] = {}
+    all_scalars: dict[Path, dict[str, int | float]] = {}
 
     for filepath in files:
         try:
@@ -69,28 +70,40 @@ def main() -> None:
             all_errors.append(f"{filepath}:{line}:{col}: error: [{code}] {msg}")
 
         if args.show_shapes:
-            all_shapes[filepath] = checker.shapes
+            all_shapes[filepath] = checker.env.shapes
+            all_scalars[filepath] = checker.env.scalar_values
 
     if args.show_shapes and all_shapes:
-        print("\n-------- Shapes Found --------")
+        print("\n-------- Symbol State (Shapes & Scalars) --------")
 
         for filepath in sorted(all_shapes.keys(), key=str):
             print(f"\n{filepath}:")
             symbols = all_shapes[filepath]
-            symbols_with_no_shape: list = []
+            scalars = all_scalars.get(filepath, {})
 
-            if not symbols:
-                print("- (no shapes inferred)")
-                continue
+            # 1. Print Scalars
+            if scalars:
+                print("  Scalars:")
+                for name, val in sorted(scalars.items()):
+                    print(f"    - {name} = {val}")
 
-            for var_name, shape in sorted(symbols.items()):
-                if shape is not None:
-                    print(f"- {var_name}: {shape}")
-                else:
-                    symbols_with_no_shape.append(var_name)
-            print(
-                f"\nno shape inferred for:\n{', '.join(symbols_with_no_shape)}"
-            ) if symbols_with_no_shape else ""
+            # 2. Print Shapes
+            if symbols:
+                print("  Shapes:")
+                symbols_with_no_shape = []
+                for var_name, shape in sorted(symbols.items()):
+                    if shape is not None:
+                        print(f"    - {var_name}: {shape}")
+                    else:
+                        symbols_with_no_shape.append(var_name)
+
+                if symbols_with_no_shape:
+                    print(
+                        f"    - no shape inferred for: {', '.join(symbols_with_no_shape)}"
+                    )
+
+            if not symbols and not scalars:
+                print("  - (no symbols tracked)")
 
         print("\n" + "-" * 30 + "\n")
 

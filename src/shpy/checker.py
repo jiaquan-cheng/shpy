@@ -3,6 +3,8 @@ import math
 from enum import Enum
 from typing import Any
 
+from shpy.environment import Environment
+
 
 class ErrorCode(Enum):
     ANNOTATION = "Annotation"
@@ -14,12 +16,7 @@ class ErrorCode(Enum):
 
 class Checker(ast.NodeVisitor):
     def __init__(self) -> None:
-        self.shapes: dict[
-            str, tuple[Any, ...] | None
-        ] = {}  # tracks variable shapes, None if unknown
-        self.scalar_values: dict[
-            str, int | float
-        ] = {}  # tracks variable values of scalars, in case they are used in shape definitions
+        self.env = Environment()  # Replaces self.shapes and self.scalar_values
         self.functions: dict[str, ast.FunctionDef] = {}
         self.errors: list[dict[str, Any]] = []
 
@@ -77,6 +74,16 @@ class Checker(ast.NodeVisitor):
             ast.Div: self._infer_elementwise_shape,
         }
 
+    @property
+    def shapes(self) -> dict[str, tuple[Any, ...] | None]:
+        """Convenience property for tests and CLI to access global shapes."""
+        return self.env.shapes
+
+    @property
+    def scalar_values(self) -> dict[str, int | float]:
+        """Convenience property for tests and CLI to access global scalar values."""
+        return self.env.scalar_values
+
     # ==========================================
     # 1. Entry Points
     # ==========================================
@@ -92,12 +99,14 @@ class Checker(ast.NodeVisitor):
         if isinstance(node.value, ast.Constant) and isinstance(
             node.value.value, (int, float)
         ):
-            self.scalar_values[var_name] = node.value.value
+            self.env.set_scalar(var_name, node.value.value)
 
         annotated_shape = self._extract_annotation_shape(node.annotation)
         inferred_shape = self._infer_shape(node.value) if node.value else None
 
-        self.shapes[var_name] = annotated_shape if annotated_shape else inferred_shape
+        self.env.set_shape(
+            var_name, annotated_shape if annotated_shape else inferred_shape
+        )
 
         if annotated_shape and inferred_shape and annotated_shape != inferred_shape:
             self._log_error(
@@ -116,13 +125,13 @@ class Checker(ast.NodeVisitor):
         ):
             for target in node.targets:
                 if isinstance(target, ast.Name):
-                    self.scalar_values[target.id] = node.value.value
+                    self.env.set_scalar(target.id, node.value.value)
 
         inferred_shape = self._infer_shape(node.value) if node.value else None
 
         for target in node.targets:
             if isinstance(target, ast.Name):
-                self.shapes[target.id] = inferred_shape
+                self.env.set_shape(target.id, inferred_shape)
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         """Tracks function definitions and checks their bodies."""
@@ -138,7 +147,7 @@ class Checker(ast.NodeVisitor):
             return None
 
         if isinstance(node, ast.Name):
-            return self.shapes.get(node.id)
+            return self.env.get_shape(node.id)
 
         if isinstance(node, ast.Call):
             return self._infer_call_shape(node)
@@ -772,6 +781,8 @@ class Checker(ast.NodeVisitor):
 
     def _extract_dim_value(self, node: ast.AST | None) -> int | str | None:
         """Extracts a static integer, negative integer, or scalar/symbolic variable from a node."""
+        value = None
+
         if node is None:
             return None
 
@@ -790,12 +801,10 @@ class Checker(ast.NodeVisitor):
             if value.is_integer():
                 return -int(value)
 
-        # 3. Variable name (scalar lookup or symbolic string)
         if isinstance(node, ast.Name):
-            if node.id not in self.scalar_values:
-                return node.id
-            value = self.scalar_values[node.id]
-            if not value.is_integer():
+            value = self.env.get_scalar(node.id)
+
+            if value is None or not float(value).is_integer():
                 self._log_error(
                     node,
                     ErrorCode.VALUE,
