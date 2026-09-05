@@ -33,7 +33,7 @@ def test_checker(code, expected_symbols, expected_errors):
         f"  Full table:      {checker.shapes}"
     )
 
-    for actual, expected in zip(checker.errors, expected_errors):
+    for actual, expected in zip(checker.errors, expected_errors, strict=False):
         assert actual["line"] == expected["line"], (
             f"\nError line mismatch:\n"
             f"  Expected line: {expected['line']}\n"

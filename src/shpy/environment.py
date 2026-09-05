@@ -3,12 +3,14 @@ from typing import Any
 
 class Environment:
     def __init__(self, parent: "Environment | None" = None) -> None:
+        """Manages global and local variable shapes and scalar values."""
+
         self.parent = parent
         self.shapes: dict[str, tuple[Any, ...] | None] = {}
         self.scalar_values: dict[str, int | float] = {}
 
     def create_child(self) -> "Environment":
-        """Factory method to spawn a nested local scope."""
+        """Spawns an environment for local variables and shapes."""
         return Environment(parent=self)
 
     def get_shape(self, name: str) -> tuple[Any, ...] | None:

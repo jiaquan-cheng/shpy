@@ -13,8 +13,59 @@ except importlib.metadata.PackageNotFoundError:
     __version__ = "unknown"
 
 
+def main() -> None:
+    """CLI entry point for the local Python shape checker."""
+    parser = argparse.ArgumentParser(description="A local Python shape checker.")
+    parser.add_argument(
+        "paths", nargs="+", type=Path, help="Files or directories to check"
+    )
+    parser.add_argument(
+        "--version", action="version", version=f"%(prog)s {__version__}"
+    )
+    parser.add_argument(
+        "--show-shapes",
+        action="store_true",
+        help="Display inferred NumPy shapes for all variables",
+    )
+    args = parser.parse_args()
+
+    files = discover_files(args.paths)
+    all_errors: list[str] = []
+    all_shapes: dict[Path, dict[str, tuple[Any, ...] | None]] = {}
+    all_scalars: dict[Path, dict[str, int | float]] = {}
+
+    for filepath in files:
+        file_errors, shapes, scalars = _process_file(filepath)
+        all_errors.extend(file_errors)
+        if shapes:
+            all_shapes[filepath] = shapes
+        if scalars:
+            all_scalars[filepath] = scalars
+
+    if args.show_shapes and all_shapes:
+        _print_shape_report(all_shapes, all_scalars)
+
+    all_errors.sort()
+    for err in all_errors:
+        print(err)
+
+    if all_errors:
+        print(f"\nFound {len(all_errors)} error(s) across {len(files)} file(s).")
+        sys.exit(1)
+    else:
+        print(f"Success: Checked {len(files)} file(s), no shape errors found.")
+        sys.exit(0)
+
+
 def discover_files(paths: list[Path]) -> list[Path]:
-    """Finds all .py files."""
+    """Discovers and collects all Python (.py) source files from the provided paths.
+
+    Args:
+        paths: A list of file or directory Path objects to scan.
+
+    Returns:
+        A list of resolved Path objects pointing to valid Python source files.
+    """
     files_to_check = []
     for path in paths:
         if not path.exists():
@@ -32,91 +83,79 @@ def discover_files(paths: list[Path]) -> list[Path]:
     return files_to_check
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="A local Python shape checker.")
-    parser.add_argument(
-        "paths", nargs="+", type=Path, help="Files or directories to check"
-    )
-    parser.add_argument(
-        "--version", action="version", version=f"%(prog)s {__version__}"
-    )
-    parser.add_argument(
-        "--show-shapes",
-        action="store_true",
-        help="Display inferred NumPy shapes for all variables",
-    )
-    args = parser.parse_args()
-    files = discover_files(args.paths)
-    all_errors = []
-    all_shapes: dict[Path, dict[str, tuple[Any, ...] | None]] = {}
-    all_scalars: dict[Path, dict[str, int | float]] = {}
+def _process_file(
+    filepath: Path,
+) -> tuple[list[str], dict[str, tuple[Any, ...] | None], dict[str, int | float]]:
+    """Processes a single source file, running syntax checks and shape analysis.
 
-    for filepath in files:
-        try:
-            code = filepath.read_text(encoding="utf-8")
-            tree = ast.parse(code, filename=str(filepath))
-        except SyntaxError as e:
-            all_errors.append(f"{filepath}:{e.lineno}: error: [SyntaxError] {e.msg} ")
-            continue
+    Args:
+        filepath: The path to the file to check.
 
-        checker = Checker()
-        checker.visit(tree)
+    Returns:
+        A tuple containing a list of formatted error messages,
+        the extracted shapes dictionary, and the extracted scalars dictionary.
+    """
+    errors: list[str] = []
+    try:
+        code = filepath.read_text(encoding="utf-8")
+        tree = ast.parse(code, filename=str(filepath))
+    except SyntaxError as e:
+        errors.append(f"{filepath}:{e.lineno}: error: [SyntaxError] {e.msg} ")
+        return errors, {}, {}
 
-        for error in checker.errors:
-            line = error["line"]
-            col = error["col"]
-            code = error["code"]
-            msg = error["message"]
-            all_errors.append(f"{filepath}:{line}:{col}: error: [{code}] {msg}")
+    checker = Checker()
+    checker.visit(tree)
 
-        if args.show_shapes:
-            all_shapes[filepath] = checker.env.shapes
-            all_scalars[filepath] = checker.env.scalar_values
+    for error in checker.errors:
+        line = error["line"]
+        col = error["col"]
+        code = error["code"]
+        msg = error["message"]
+        errors.append(f"{filepath}:{line}:{col}: error: [{code}] {msg}")
 
-    if args.show_shapes and all_shapes:
-        print("\n-------- Symbol State (Shapes & Scalars) --------")
+    return errors, checker.env.shapes, checker.env.scalar_values
 
-        for filepath in sorted(all_shapes.keys(), key=str):
-            print(f"\n{filepath}:")
-            symbols = all_shapes[filepath]
-            scalars = all_scalars.get(filepath, {})
 
-            # 1. Print Scalars
-            if scalars:
-                print("  Scalars:")
-                for name, val in sorted(scalars.items()):
-                    print(f"    - {name} = {val}")
+def _print_shape_report(
+    all_shapes: dict[Path, dict[str, tuple[Any, ...] | None]],
+    all_scalars: dict[Path, dict[str, int | float]],
+) -> None:
+    """Prints a formatted report of all inferred shapes and scalar values across files.
 
-            # 2. Print Shapes
-            if symbols:
-                print("  Shapes:")
-                symbols_with_no_shape = []
-                for var_name, shape in sorted(symbols.items()):
-                    if shape is not None:
-                        print(f"    - {var_name}: {shape}")
-                    else:
-                        symbols_with_no_shape.append(var_name)
+    Args:
+        all_shapes: Mapping of file paths to their symbol shape definitions.
+        all_scalars: Mapping of file paths to their tracked scalar variables.
+    """
+    print("\n-------- Symbol State (Shapes & Scalars) --------")
 
-                if symbols_with_no_shape:
-                    print(
-                        f"    - no shape inferred for: {', '.join(symbols_with_no_shape)}"
-                    )
+    for filepath in sorted(all_shapes.keys(), key=str):
+        print(f"\n{filepath}:")
+        symbols = all_shapes[filepath]
+        scalars = all_scalars.get(filepath, {})
 
-            if not symbols and not scalars:
-                print("  - (no symbols tracked)")
+        if scalars:
+            print("  Scalars:")
+            for name, val in sorted(scalars.items()):
+                print(f"    - {name} = {val}")
 
-        print("\n" + "-" * 30 + "\n")
+        if symbols:
+            print("  Shapes:")
+            symbols_with_no_shape = []
+            for var_name, shape in sorted(symbols.items()):
+                if shape is not None:
+                    print(f"    - {var_name}: {shape}")
+                else:
+                    symbols_with_no_shape.append(var_name)
 
-    all_errors.sort()
-    for err in all_errors:
-        print(err)
+            if symbols_with_no_shape:
+                print(
+                    f"    - no shape inferred for: {', '.join(symbols_with_no_shape)}"
+                )
 
-    if all_errors:
-        print(f"\nFound {len(all_errors)} error(s) across {len(files)} file(s).")
-        sys.exit(1)
-    else:
-        print(f"Success: Checked {len(files)} file(s), no shape errors found.")
-        sys.exit(0)
+        if not symbols and not scalars:
+            print("  - (no symbols tracked)")
+
+    print("\n" + "-" * 30 + "\n")
 
 
 if __name__ == "__main__":

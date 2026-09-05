@@ -7,11 +7,11 @@ setup:
 	uv run pre-commit install
 
 lint:
-	uv run ruff check . --fix
+	uv run ruff check src tests --fix
 	uv run mypy -p shpy
 
 format:
-	uv run ruff format .
+	uv run ruff format src tests
 
 test:
 	uv run pytest
